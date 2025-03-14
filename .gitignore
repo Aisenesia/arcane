@@ -1,0 +1,6 @@
+datasets/
+runs/
+dataset.yaml
+yolo11n.pt
+best.pt
+best.onnx
