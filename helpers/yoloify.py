@@ -5,7 +5,7 @@ import os
 
 
 # Paths to image folders
-train_dir = "C:/Users/Hakan/cv/arcane/datasets/train/images"
+train_dir = "datasets/train/images"
 
 # Function to create YOLO label files
 def create_yolo_labels(image_dir):

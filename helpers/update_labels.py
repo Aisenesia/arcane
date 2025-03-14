@@ -13,7 +13,7 @@ def update_label_file(file_path):
     with open(file_path, 'w') as file:
         for line in lines:
             parts = line.strip().split()
-            parts[0] = str(int(parts[0]) - 1)
+            parts[0] = str(int(parts[0]))
             file.write(' '.join(parts) + '\n')
 
 # Iterate through all folders and files in the labels directory
