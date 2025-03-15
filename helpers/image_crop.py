@@ -5,8 +5,8 @@ from PIL import Image
 dataset_path = 'datasets/train/images'
 
 # Define the target dimensions
-target_width = 2624
-target_height = 3000
+target_width = 3000
+target_height = 2624
 
 # Process each folder
 for folder_name in os.listdir(dataset_path):
@@ -28,4 +28,4 @@ for folder_name in os.listdir(dataset_path):
                         new_image_path = os.path.join(folder_path, new_filename)
                         cropped_img.save(new_image_path)
                         # Optionally, remove the original image
-                        # os.remove(image_path)
+                        os.remove(image_path)

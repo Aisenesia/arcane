@@ -6,10 +6,10 @@ from ultralytics import YOLO
 
 
 # Load the trained model
-model = YOLO('runs/detect/train4/weights/best.pt')  # Adjust the path to your trained model
+model = YOLO('runs/classify/train17/weights/best.pt')  # Adjust the path to your trained model
 
 # Path to the test image
-test_image_path = 'datasets/val/images/13/img1.jpg'  # Adjust the path to your test image
+test_image_path = 'datasets/val/13/img1.jpg'  # Adjust the path to your test image
 
 # Verify the image path
 if not os.path.exists(test_image_path):

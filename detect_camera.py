@@ -4,7 +4,7 @@ import torch
 from ultralytics import YOLO
 
 # Load the YOLO model
-model = YOLO('best.pt')
+model = YOLO('runs/detect/train5/weights/best.pt')
 model.eval()
 
 # Define a function to preprocess the frame

@@ -4,3 +4,5 @@ dataset.yaml
 yolo11n.pt
 best.pt
 best.onnx
+yolo11s-cls.pt
+bak/
