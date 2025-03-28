@@ -1,6 +1,10 @@
 datasets/
 datasets_classify/
-runs/
+
+runs/*
+!runs/dice_detect.pt
+!runs/dice_classify_2.pt
+
 dataset.yaml
 yolo11n.pt
 best.pt

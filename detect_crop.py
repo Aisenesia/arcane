@@ -5,12 +5,12 @@ import torch
 from ultralytics import YOLO
 
 # Load the YOLO model
-model = YOLO('runs/detect/train7/weights/best.pt')
+model = YOLO('runs/dice_detect.pt')
 model.eval()
 
 # Define the input and output directories
-input_dir = 'dataset2'
-output_dir = 'cropped_dataset2'
+input_dir = 'datasets'
+output_dir = 'cropped_dataset3'
 
 # Create the output directory if it doesn't exist
 os.makedirs(output_dir, exist_ok=True)
@@ -22,6 +22,8 @@ def preprocess_and_normalize(cropped_img):
 
 # Function to process images in a directory
 def process_images_in_directory(directory):
+    print(f"Input directory: {input_dir}")
+    print(f"Files in input directory: {os.listdir(input_dir)}")
     for root, _, files in os.walk(directory):
         for file in files:
             if file.endswith('.png'):
