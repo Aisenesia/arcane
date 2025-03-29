@@ -9,8 +9,8 @@ model = YOLO('runs/dice_detect.pt')
 model.eval()
 
 # Define the input and output directories
-input_dir = 'datasets'
-output_dir = 'cropped_dataset3'
+input_dir = 'datasets/train'
+output_dir = 'cropped_dataset'
 
 # Create the output directory if it doesn't exist
 os.makedirs(output_dir, exist_ok=True)

@@ -6,7 +6,7 @@ if __name__ == '__main__':
     model = YOLO('yolo11s-cls.pt')  # Replace with your trained model path
 
     # Train the model (if needed)
-    model.train(data="datasets_classify/", epochs=50, imgsz=224, batch=16)
+    model.train(data="datasets_classify/", epochs=50, imgsz=384, batch=16)
 
 
     results = model.val()
