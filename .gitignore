@@ -1,15 +1,2 @@
-datasets/
-datasets_classify/
-
-runs/*
-!runs/dice_detect.pt
-!runs/dice_classify_2.pt
-!runs/dice_detect.onnx
-!runs/dice_classify_2.onnx
-
-dataset.yaml
-yolo11n.pt
-best.pt
-best.onnx
-yolo11s-cls.pt
-bak/
+.vscode
+build/
