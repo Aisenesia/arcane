@@ -1,6 +1,7 @@
 #include <opencv2/opencv.hpp>
 #include <opencv2/dnn.hpp>
 #include <iostream>
+#include <algorithm>
 
 using namespace cv;
 using namespace cv::dnn;
@@ -33,12 +34,14 @@ void classifyImage(const string& modelPath, const Mat& image) {
 }
 
 // Load and run detection model
+
 void detectDice(const string& detectionModelPath, const string& classificationModelPath, Mat& frame) {
-    // Load detection and classification models
+    // Load detection model
     Net netDetection = readNetFromONNX(detectionModelPath);
     netDetection.setPreferableBackend(DNN_BACKEND_OPENCV);
     netDetection.setPreferableTarget(DNN_TARGET_CPU);
-
+    
+    // Load classification model
     Net netClassification = readNetFromONNX(classificationModelPath);
     netClassification.setPreferableBackend(DNN_BACKEND_OPENCV);
     netClassification.setPreferableTarget(DNN_TARGET_CPU);
@@ -48,119 +51,132 @@ void detectDice(const string& detectionModelPath, const string& classificationMo
     blobFromImage(frame, blob, 1.0 / 255.0, Size(640, 640), Scalar(), true, false);
     netDetection.setInput(blob);
 
-    // Perform detection
-    // Get all output layer names
-    vector<String> outLayerNames = netDetection.getUnconnectedOutLayersNames();
-    vector<Mat> outs;
-    netDetection.forward(outs, outLayerNames);
-
-    // Initialize vectors for bounding boxes, confidences, and class IDs
-    vector<Rect> boxes;
-    vector<float> confidences;
+    // Get detection output
+    Mat output = netDetection.forward();
     
-    // Parse YOLOv8 output format
-    // The primary detection output should be the first one (outs[0])
-    // YOLOv8 format: [num_detections, 84+] where each row has:
-    // [x, y, w, h, confidence, class_scores...]
+    cout << "Detection output shape: ";
+    for (int d = 0; d < output.dims; d++) {
+        cout << output.size[d] << " ";
+    }
+    cout << endl;
     
-    // Get the first output layer (main detection results)
-    const Mat& output = outs[0];
+    // For YOLOv8/YOLO11 format with shape [1, 5, 8400]
+    // First dimension: batch size (1)
+    // Second dimension: values per box (x, y, w, h, confidence)
+    // Third dimension: number of detections/grid cells (8400)
     
-    float* data = (float*)output.data;
-    const int dimensions = output.size[1]; // Number of values per detection
-    const int numDetections = output.size[0]; // Number of detections
-    
-    const int coordinatesOffset = 0; // Position where box coordinates start
-    const int confidenceOffset = 4; // Position of confidence score
-    const int classOffset = 5;      // Position where class scores start
-    const int numClasses = dimensions - classOffset; // Number of classes
-    
-    // Process each detection
-    for (int i = 0; i < numDetections; ++i) {
-        // Get pointer to the current detection data
-        float* detection = &data[i * dimensions];
+    // Ensure we have the expected format
+    if (output.dims == 3 && output.size[1] == 5) {
+        vector<Rect> boxes;
+        vector<float> confidences;
         
-        // Get confidence
-        float confidence = detection[confidenceOffset];
+        // Access the output data - shape is [1, 5, 8400]
+        // In OpenCV, we need to process this correctly
+        int batch = 0; // We only have one batch
+        const int numDetections = output.size[2]; // 8400 detections
+        const int valuesPerBox = output.size[1]; // 5 values per box
         
-        // Find the class with highest score
-        int classId = 0;
-        float maxScore = 0;
-        for (int j = 0; j < numClasses; ++j) {
-            float score = detection[classOffset + j];
-            if (score > maxScore) {
-                maxScore = score;
-                classId = j;
+        cout << "Processing " << numDetections << " potential detections" << endl;
+        
+        // YOLO11 format:
+        // output[0][0][i] = x center
+        // output[0][1][i] = y center
+        // output[0][2][i] = width
+        // output[0][3][i] = height
+        // output[0][4][i] = confidence
+        
+        // Access values for each detection
+        for (int i = 0; i < numDetections; i++) {
+            float confidence = output.ptr<float>(batch)[4 * numDetections + i];
+            
+            if (confidence > 0.5) { // Confidence threshold
+                float cx = output.ptr<float>(batch)[0 * numDetections + i];
+                float cy = output.ptr<float>(batch)[1 * numDetections + i];
+                float w = output.ptr<float>(batch)[2 * numDetections + i];
+                float h = output.ptr<float>(batch)[3 * numDetections + i];
+                
+                // Convert to corner coordinates
+                int left = static_cast<int>((cx - w/2) * frame.cols);
+                int top = static_cast<int>((cy - h/2) * frame.rows);
+                int width = static_cast<int>(w * frame.cols);
+                int height = static_cast<int>(h * frame.rows);
+                
+                // Ensure coordinates are valid
+                left = max(0, min(left, frame.cols - 1));
+                top = max(0, min(top, frame.rows - 1));
+                width = min(width, frame.cols - left);
+                height = min(height, frame.rows - top);
+                
+                // Create rectangle and add to vectors
+                if (width > 0 && height > 0) {
+                    Rect box(left, top, width, height);
+                    boxes.push_back(box);
+                    confidences.push_back(confidence);
+                    
+                    cout << "Found box: " << box << " with confidence: " << confidence << endl;
+                }
             }
         }
         
-        // Filter detections by confidence threshold
-        float objectConfidence = confidence * maxScore;
-        if (objectConfidence > 0.5) {
-            // YOLOv8 outputs centerX, centerY, width, height (normalized)
-            float centerX = detection[coordinatesOffset];
-            float centerY = detection[coordinatesOffset + 1];
-            float width = detection[coordinatesOffset + 2];
-            float height = detection[coordinatesOffset + 3];
-            
-            // Convert to top-left corner coordinates
-            int x1 = static_cast<int>((centerX - width/2) * frame.cols);
-            int y1 = static_cast<int>((centerY - height/2) * frame.rows);
-            int boxWidth = static_cast<int>(width * frame.cols);
-            int boxHeight = static_cast<int>(height * frame.rows);
-            
-            // Clamp bounding box coordinates to frame dimensions
-            x1 = max(0, min(x1, frame.cols - 1));
-            y1 = max(0, min(y1, frame.rows - 1));
-            boxWidth = min(boxWidth, frame.cols - x1);
-            boxHeight = min(boxHeight, frame.rows - y1);
-            
-            // Create the rect and add to vectors
-            Rect diceBox(x1, y1, boxWidth, boxHeight);
-            boxes.push_back(diceBox);
-            confidences.push_back(objectConfidence);
+        // Apply non-maximum suppression
+        vector<int> indices;
+        if (!boxes.empty()) {
+            NMSBoxes(boxes, confidences, 0.5, 0.4, indices);
+            cout << "After NMS: " << indices.size() << " boxes remain" << endl;
         }
-    }
-    
-    // Apply non-maximum suppression to remove overlapping boxes
-    vector<int> indices;
-    NMSBoxes(boxes, confidences, 0.5, 0.4, indices);
-    
-    // Process surviving detections
-    for (size_t i = 0; i < indices.size(); ++i) {
-        int idx = indices[i];
-        Rect box = boxes[idx];
         
-        // Crop the detected region
-        Mat cropped = frame(box).clone();
-        
-        // Perform classification if the cropped frame is valid
-        if (!cropped.empty()) {
-            // Preprocess for classification
-            Mat blobClassify;
-            resize(cropped, cropped, Size(224, 224));
+        // Process surviving detections
+        for (size_t i = 0; i < indices.size(); ++i) {
+            int idx = indices[i];
+            Rect box = boxes[idx];
             
-            // Classify the cropped image
-            Mat blob;
-            blobFromImage(cropped, blob, 1.0 / 255.0, Size(224, 224), Scalar(), true, false);
-            netClassification.setInput(blob);
+            // Ensure the box is valid
+            if (box.width <= 0 || box.height <= 0 || 
+                box.x < 0 || box.y < 0 ||
+                box.x + box.width > frame.cols || 
+                box.y + box.height > frame.rows) {
+                continue;
+            }
             
-            Mat output = netClassification.forward();
+            // Crop the detected region
+            Mat cropped;
+            try {
+                cropped = frame(box).clone();
+            } catch (const cv::Exception& e) {
+                cerr << "Error cropping frame: " << e.what() << endl;
+                continue;
+            }
             
-            // Get the predicted class
-            Point classIdPoint;
-            double classConfidence;
-            minMaxLoc(output, 0, &classConfidence, 0, &classIdPoint);
-            int classId = classIdPoint.x;
-            
-            // Display classification result
-            rectangle(frame, box, Scalar(0, 255, 0), 2);
-            putText(frame, "Dice: " + to_string(classId + 1), 
-                    Point(box.x, box.y - 10), FONT_HERSHEY_SIMPLEX, 0.5, Scalar(0, 255, 0), 2);
-            
-            cout << "Detected dice with value: " << classId + 1 
-                 << " (confidence: " << classConfidence << ")" << endl;
+            // Perform classification if the cropped frame is valid
+            if (!cropped.empty()) {
+                // Preprocess for classification
+                Mat resized;
+                resize(cropped, resized, Size(224, 224));
+                
+                // Classify the cropped image
+                Mat blobClassify;
+                blobFromImage(resized, blobClassify, 1.0 / 255.0, Size(224, 224), Scalar(), true, false);
+                netClassification.setInput(blobClassify);
+                
+                Mat classOutput = netClassification.forward();
+                
+                // Get the predicted class
+                Point classIdPoint;
+                double classConfidence;
+                minMaxLoc(classOutput, 0, &classConfidence, 0, &classIdPoint);
+                int classId = classIdPoint.x;
+                
+                // Draw the bounding box and class label
+                rectangle(frame, box, Scalar(0, 255, 0), 2);
+                putText(frame, "Dice: " + to_string(classId + 1), 
+                        Point(box.x, box.y - 10), FONT_HERSHEY_SIMPLEX, 0.5, Scalar(0, 255, 0), 2);
+                
+                cout << "Classified dice with value: " << classId + 1 
+                     << " (confidence: " << classConfidence << ")" << endl;
+            }
         }
+    } else {
+        cout << "Unexpected output format. Expected [1, 5, N] but got a different shape." << endl;
     }
 
     // Display the frame with detections
@@ -207,4 +223,43 @@ int main(int argc, char** argv) {
     cap.release();
     destroyAllWindows();
     return 0;
+}
+
+void debugModelOutput(Net& net, const Mat& frame) {
+    // Get input and output layer names
+    vector<String> outLayerNames = net.getUnconnectedOutLayersNames();
+    
+    cout << "Model has " << outLayerNames.size() << " output layers:" << endl;
+    for (const auto& name : outLayerNames) {
+        cout << "Layer: " << name << endl;
+    }
+    
+    // Prepare input
+    Mat blob;
+    blobFromImage(frame, blob, 1.0 / 255.0, Size(640, 640), Scalar(), true, false);
+    net.setInput(blob);
+    
+    // Get outputs
+    vector<Mat> outs;
+    net.forward(outs, outLayerNames);
+    
+    // Print output shapes and some values
+    for (size_t i = 0; i < outs.size(); i++) {
+        const Mat& output = outs[i];
+        cout << "Output " << i << " shape: ";
+        for (int d = 0; d < output.dims; d++) {
+            cout << output.size[d] << " ";
+        }
+        cout << endl;
+        
+        // Print first few values if it's a reasonable size
+        if (output.total() > 0 && output.dims <= 2) {
+            cout << "First values: ";
+            const float* data = (float*)output.data;
+            for (int j = 0; j < min(10, (int) output.total()); j++) {
+                cout << data[j] << " ";
+            }
+            cout << endl;
+        }
+    }
 }
