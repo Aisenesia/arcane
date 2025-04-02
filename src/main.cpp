@@ -29,8 +29,8 @@ int classConverter(int classId) {
 // Load and run classification model
 void classifyImage(const string& modelPath, const Mat& image) {
    Net net = readNetFromONNX(modelPath);
-   net.setPreferableBackend(DNN_BACKEND_OPENCV);
-   net.setPreferableTarget(DNN_TARGET_CPU);
+   net.setPreferableBackend(DNN_BACKEND_CUDA);
+   net.setPreferableTarget(DNN_TARGET_CUDA);
 
    Mat blob;
    blobFromImage(image, blob, 1.0 / 255.0, Size(224, 224), Scalar(), true, false);
@@ -57,13 +57,13 @@ void classifyImage(const string& modelPath, const Mat& image) {
 void detectDice(const string& detectionModelPath, const string& classificationModelPath, Mat& frame) {
    // Load detection model
    Net netDetection = readNetFromONNX(detectionModelPath);
-   netDetection.setPreferableBackend(DNN_BACKEND_OPENCV);
-   netDetection.setPreferableTarget(DNN_TARGET_CPU);
+   netDetection.setPreferableBackend(DNN_BACKEND_CUDA);
+   netDetection.setPreferableTarget(DNN_TARGET_CUDA);
 
    // Load classification model
    Net netClassification = readNetFromONNX(classificationModelPath);
-   netClassification.setPreferableBackend(DNN_BACKEND_OPENCV);
-   netClassification.setPreferableTarget(DNN_TARGET_CPU);
+   netClassification.setPreferableBackend(DNN_BACKEND_CUDA);
+   netClassification.setPreferableTarget(DNN_TARGET_CUDA);
 
    // Preprocess the frame for detection
    Mat blob;
@@ -233,9 +233,68 @@ void detectDice(const string& detectionModelPath, const string& classificationMo
    
    
 }
+
+void debugModelOutput(Net& net, const Mat& frame) {
+   // Get input and output layer names
+   vector<String> outLayerNames = net.getUnconnectedOutLayersNames();
+
+   cout << "Model has " << outLayerNames.size() << " output layers:" << endl;
+   for (const auto& name : outLayerNames) {
+      cout << "Layer: " << name << endl;
+   }
+
+   // Prepare input
+   Mat blob;
+   blobFromImage(frame, blob, 1.0 / 255.0, Size(640, 640), Scalar(), true, false);
+   net.setInput(blob);
+
+   // Get outputs
+   vector<Mat> outs;
+   net.forward(outs, outLayerNames);
+
+   // Print output shapes and some values
+   for (size_t i = 0; i < outs.size(); i++) {
+      const Mat& output = outs[i];
+      cout << "Output " << i << " shape: ";
+      for (int d = 0; d < output.dims; d++) {
+         cout << output.size[d] << " ";
+      }
+      cout << endl;
+
+      // Print first few values if it's a reasonable size
+      if (output.total() > 0 && output.dims <= 2) {
+         cout << "First values: ";
+         const float* data = (float*)output.data;
+         for (int j = 0; j < min(10, (int)output.total()); j++) {
+            cout << data[j] << " ";
+         }
+         cout << endl;
+      }
+   }
+}
+
+
 int main(int argc, char** argv) {
    string detectionModelPath = "yolo11m_detection.onnx";
    string classificationModelPath = "yolo11s_cls.onnx";
+
+
+
+   if(argc == 2 && string(argv[1]) == "cuda") {
+      cout << "CUDA support: " << cv::cuda::getCudaEnabledDeviceCount() << endl;
+      return 0;
+   }
+   if(argc == 2 && string(argv[1]) == "debug") {
+      // Load a sample image for debugging
+      Mat image = imread("sample.png");
+      if (image.empty()) {
+         cout << "Error loading image: sample.jpg" << endl;
+         return -1;
+      }
+      Net net = readNetFromONNX(detectionModelPath);
+      debugModelOutput(net, image);
+      return 0;
+   }
 
    if (argc == 3 && string(argv[1]) == "classify") {
       Mat image = imread(argv[2]);
@@ -276,41 +335,3 @@ int main(int argc, char** argv) {
    return 0;
 }
 
-void debugModelOutput(Net& net, const Mat& frame) {
-   // Get input and output layer names
-   vector<String> outLayerNames = net.getUnconnectedOutLayersNames();
-
-   cout << "Model has " << outLayerNames.size() << " output layers:" << endl;
-   for (const auto& name : outLayerNames) {
-      cout << "Layer: " << name << endl;
-   }
-
-   // Prepare input
-   Mat blob;
-   blobFromImage(frame, blob, 1.0 / 255.0, Size(640, 640), Scalar(), true, false);
-   net.setInput(blob);
-
-   // Get outputs
-   vector<Mat> outs;
-   net.forward(outs, outLayerNames);
-
-   // Print output shapes and some values
-   for (size_t i = 0; i < outs.size(); i++) {
-      const Mat& output = outs[i];
-      cout << "Output " << i << " shape: ";
-      for (int d = 0; d < output.dims; d++) {
-         cout << output.size[d] << " ";
-      }
-      cout << endl;
-
-      // Print first few values if it's a reasonable size
-      if (output.total() > 0 && output.dims <= 2) {
-         cout << "First values: ";
-         const float* data = (float*)output.data;
-         for (int j = 0; j < min(10, (int)output.total()); j++) {
-            cout << data[j] << " ";
-         }
-         cout << endl;
-      }
-   }
-}
