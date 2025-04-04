@@ -10,9 +10,34 @@ using namespace cv;
 using namespace cv::dnn;
 using namespace std;
 
-// Function to get cuda status
-bool getCudaStatus() {
-    return cuda::getCudaEnabledDeviceCount() > 0;
+// Global variables for required CUDA compute capability
+const int REQUIRED_CUDA_MAJOR = 8;
+const int REQUIRED_CUDA_MINOR = 6;
+
+// Function to check CUDA compute capability and fallback to CPU if necessary
+bool checkCudaComputeCapability() {
+    int deviceCount = cuda::getCudaEnabledDeviceCount();
+    if (deviceCount == 0) {
+        cout << "No CUDA-enabled devices found. Falling back to CPU." << endl;
+        return false;
+    }
+
+    for (int i = 0; i < deviceCount; ++i) {
+        cuda::DeviceInfo deviceInfo(i);
+        int major = deviceInfo.majorVersion();
+        int minor = deviceInfo.minorVersion();
+
+        cout << "Device " << i << ": " << deviceInfo.name() << " (Compute Capability: " 
+             << major << "." << minor << ")" << endl;
+
+        if (major > REQUIRED_CUDA_MAJOR || (major == REQUIRED_CUDA_MAJOR && minor >= REQUIRED_CUDA_MINOR)) {
+            return true; // A suitable device is found
+        }
+    }
+
+    cout << "No CUDA device meets the required compute capability (" 
+         << REQUIRED_CUDA_MAJOR << "." << REQUIRED_CUDA_MINOR << "). Falling back to CPU." << endl;
+    return false;
 }
 
 
@@ -209,7 +234,9 @@ int main(int argc, char** argv) {
     string detectionModelPath = "yolov8m_detection.onnx";
     string classificationModelPath = "yolov8s_cls.onnx";
 
-    bool useCuda = getCudaStatus(); // Set to false to force CPU fallback
+    // Check CUDA status and compute capability
+    bool useCuda = checkCudaComputeCapability();
+    cout << "Using CUDA: " << (useCuda ? "Yes" : "No") << endl;
 
     // Initialize networks
     Net netDetection = initializeNetwork(detectionModelPath, useCuda);
@@ -228,6 +255,9 @@ int main(int argc, char** argv) {
         cout << "  " << argv[0] << " classification <image_path> # Run classification on an image" << endl;
         cout << "  " << argv[0] << " live                        # Run live detection using webcam" << endl;
     }
+    
+    cout << "Press Enter to exit..." << endl;
+    while(getchar() != '\n'); // Clear the input buffer
 
     return 0;
 }
