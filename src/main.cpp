@@ -2,12 +2,19 @@
 #include <iostream>
 #include <opencv2/dnn.hpp>
 #include <opencv2/opencv.hpp>
-#include <opencv2/cudaimgproc.hpp> // For CUDA-based preprocessing
+#include <opencv2/cudaimgproc.hpp>
 #include <opencv2/cudawarping.hpp>
+#include <windows.h> // For GetSystemMetrics
 
 using namespace cv;
 using namespace cv::dnn;
 using namespace std;
+
+// Function to get cuda status
+bool getCudaStatus() {
+    return cuda::getCudaEnabledDeviceCount() > 0;
+}
+
 
 // Function to convert class IDs
 int classConverter(int classId) {
@@ -41,30 +48,55 @@ void classifyImage(Net& netClassification, const Mat& image) {
     cout << "Classified as: " << classId << " with confidence: " << confidence << endl;
 }
 
+// Function to initialize a network
+Net initializeNetwork(const string& modelPath, bool useCuda) {
+    Net net = readNetFromONNX(modelPath);
+    if (useCuda && cuda::getCudaEnabledDeviceCount() > 0) {
+        net.setPreferableBackend(DNN_BACKEND_CUDA);
+        net.setPreferableTarget(DNN_TARGET_CUDA_FP16);
+    } else {
+        net.setPreferableBackend(DNN_BACKEND_OPENCV);
+        net.setPreferableTarget(DNN_TARGET_CPU);
+    }
+    return net;
+}
+
+// Function to preprocess an image (supports both CPU and CUDA)
+Mat preprocessImage(const Mat& frame, const Size& targetSize, bool useCuda) {
+    if (useCuda && cuda::getCudaEnabledDeviceCount() > 0) {
+        cuda::GpuMat gpuFrame, resizedGpuFrame;
+        gpuFrame.upload(frame);
+        cuda::resize(gpuFrame, resizedGpuFrame, targetSize);
+        Mat resizedFrame;
+        resizedGpuFrame.download(resizedFrame);
+        return resizedFrame;
+    } else {
+        Mat resizedFrame;
+        resize(frame, resizedFrame, targetSize);
+        return resizedFrame;
+    }
+}
+
+// Function to scale an image to fit the screen
+Mat scaleToFitScreen(const Mat& image) {
+    int screenWidth = GetSystemMetrics(SM_CXSCREEN);
+    int screenHeight = GetSystemMetrics(SM_CYSCREEN);
+    double scaleFactor = min((double)screenWidth / image.cols, (double)screenHeight / image.rows);
+    Mat scaledImage;
+    resize(image, scaledImage, Size(), scaleFactor, scaleFactor);
+    return scaledImage;
+}
+
 // Function to detect dice in a frame
-void detectDice(Net& netDetection, Net& netClassification, Mat& frame) {
-    // Preprocess the frame using CUDA
-    cv::cuda::GpuMat gpuFrame;
-    gpuFrame.upload(frame); // Upload frame to GPU
+Mat detectDice(Net& netDetection, Net& netClassification, const Mat& frame, bool useCuda) {
+    Mat processedFrame = frame.clone();
+    Mat resizedFrame = preprocessImage(processedFrame, Size(640, 640), useCuda);
 
-    // Resize the frame on the GPU
-    cv::cuda::GpuMat resizedGpuFrame;
-    cv::cuda::resize(gpuFrame, resizedGpuFrame, Size(640, 640));
-
-    // Download the resized frame back to the CPU
-    Mat resizedFrame;
-    resizedGpuFrame.download(resizedFrame);
-
-    // Create a blob from the resized frame
     Mat blob;
     blobFromImage(resizedFrame, blob, 1.0 / 255.0, Size(640, 640), Scalar(), true, false);
-
-    // Set the blob as input to the detection network
     netDetection.setInput(blob);
 
-    // Get detection output
     Mat output = netDetection.forward();
-
     if (output.dims == 3 && output.size[1] == 5) {
         vector<Rect> boxes;
         vector<float> confidences;
@@ -96,55 +128,107 @@ void detectDice(Net& netDetection, Net& netClassification, Mat& frame) {
             }
         }
 
-        // Apply non-maximum suppression
         vector<int> indices;
         if (!boxes.empty()) {
             NMSBoxes(boxes, confidences, 0.5, 0.4, indices);
         }
 
-        // Process surviving detections
         for (size_t i = 0; i < indices.size(); ++i) {
             int idx = indices[i];
             Rect box = boxes[idx];
 
             Mat cropped = frame(box).clone();
             if (!cropped.empty()) {
-                classifyImage(netClassification, cropped);
-                rectangle(frame, box, Scalar(0, 255, 0), 2);
+                Mat blob;
+                blobFromImage(cropped, blob, 1.0 / 255.0, Size(224, 224), Scalar(), true, false);
+                netClassification.setInput(blob);
+
+                Mat output = netClassification.forward();
+                Point classIdPoint;
+                double confidence;
+                minMaxLoc(output, 0, &confidence, 0, &classIdPoint);
+                int classId = classConverter(classIdPoint.x);
+
+                rectangle(processedFrame, box, Scalar(0, 255, 0), 2);
+                double fontScale = max(0.5, box.height / 100.0);
+                int thickness = max(1, static_cast<int>(fontScale));
+                putText(processedFrame, "Class " + to_string(classId), Point(box.x, box.y - 10), 
+                        FONT_HERSHEY_SIMPLEX, fontScale, Scalar(0, 255, 0), thickness);
             }
         }
     }
-    imshow("YOLO Dice Detection", frame);
+    return processedFrame;
 }
 
-// Main function
-int main(int argc, char** argv) {
-    string detectionModelPath = "yolov8m_detection.onnx";
-    string classificationModelPath = "yolov8s_cls.onnx";
+// Function to handle detection mode
+void runDetectionMode(Net& netDetection, Net& netClassification, const string& imagePath, bool useCuda) {
+    Mat image = imread(imagePath);
+    if (image.empty()) {
+        cout << "Error loading image: " << imagePath << endl;
+        return;
+    }
+    Mat result = detectDice(netDetection, netClassification, image, useCuda);
+    Mat scaledResult = scaleToFitScreen(result);
+    imshow("YOLO Dice Detection", scaledResult);
+    waitKey(0);
+}
 
-    // Load detection and classification models
-    Net netDetection = readNetFromONNX(detectionModelPath);
-    netDetection.setPreferableBackend(DNN_BACKEND_CUDA);
-    netDetection.setPreferableTarget(DNN_TARGET_CUDA_FP16); // Use FP16 for better performance
+// Function to handle classification mode
+void runClassificationMode(Net& netClassification, const string& imagePath) {
+    Mat image = imread(imagePath);
+    if (image.empty()) {
+        cout << "Error loading image: " << imagePath << endl;
+        return;
+    }
+    classifyImage(netClassification, image);
+}
 
-    Net netClassification = readNetFromONNX(classificationModelPath);
-    netClassification.setPreferableBackend(DNN_BACKEND_CUDA);
-    netClassification.setPreferableTarget(DNN_TARGET_CUDA_FP16);
-
+// Function to handle live detection mode
+void runLiveDetectionMode(Net& netDetection, Net& netClassification, bool useCuda) {
     VideoCapture cap(0);
     if (!cap.isOpened()) {
         cout << "Error opening camera" << endl;
-        return -1;
+        return;
     }
 
     Mat frame;
     while (cap.read(frame)) {
-        detectDice(netDetection, netClassification, frame);
+        Mat result = detectDice(netDetection, netClassification, frame, useCuda);
+        Mat scaledResult = scaleToFitScreen(result);
+        imshow("YOLO Dice Detection", scaledResult);
         if (waitKey(1) == 27) break;  // Press ESC to exit
     }
 
     cap.release();
     destroyAllWindows();
+}
+
+// Main function
+int main(int argc, char** argv) {
+    cout << "Arcane Dice Detection" << endl;
+    string detectionModelPath = "yolov8m_detection.onnx";
+    string classificationModelPath = "yolov8s_cls.onnx";
+
+    bool useCuda = getCudaStatus(); // Set to false to force CPU fallback
+
+    // Initialize networks
+    Net netDetection = initializeNetwork(detectionModelPath, useCuda);
+    Net netClassification = initializeNetwork(classificationModelPath, useCuda);
+
+    // Parse command-line arguments
+    if (argc == 3 && string(argv[1]) == "detection") {
+        runDetectionMode(netDetection, netClassification, argv[2], useCuda);
+    } else if (argc == 3 && string(argv[1]) == "classification") {
+        runClassificationMode(netClassification, argv[2]);
+    } else if (argc == 2 && string(argv[1]) == "live") {
+        runLiveDetectionMode(netDetection, netClassification, useCuda);
+    } else {
+        cout << "Usage:" << endl;
+        cout << "  " << argv[0] << " detection <image_path>       # Run detection on an image" << endl;
+        cout << "  " << argv[0] << " classification <image_path> # Run classification on an image" << endl;
+        cout << "  " << argv[0] << " live                        # Run live detection using webcam" << endl;
+    }
+
     return 0;
 }
 
