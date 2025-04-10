@@ -7,6 +7,8 @@
 #include <opencv2/cudaimgproc.hpp>
 #include <opencv2/cudawarping.hpp>
 #include <windows.h>
+#include <vector>
+
 
 using namespace cv;
 using namespace cv::dnn;
@@ -114,9 +116,71 @@ Mat scaleToFitScreen(const Mat& image) {
     return scaledImage;
 }
 
-Mat detectDice(Net& netDetection, Net& netClassification, const Mat& frame, bool useCuda) {
-    Mat processedFrame = frame.clone();
-    Mat resizedFrame = preprocessImage(processedFrame, Size(640, 640), useCuda);
+// Helper function to adjust bounding box to be square
+Rect adjustToSquare(const Rect& box, int frameWidth, int frameHeight) {
+    int maxEdge = max(box.width, box.height);
+    int centerX = box.x + box.width / 2;
+    int centerY = box.y + box.height / 2;
+
+    int newLeft = max(0, centerX - maxEdge / 2);
+    int newTop = max(0, centerY - maxEdge / 2);
+    int newRight = min(frameWidth, centerX + maxEdge / 2);
+    int newBottom = min(frameHeight, centerY + maxEdge / 2);
+
+    return Rect(newLeft, newTop, newRight - newLeft, newBottom - newTop);
+}
+
+// Helper function to process detection output
+vector<Rect> processDetections(const Mat& output, const Mat& frame, vector<float>& confidences) {
+    vector<Rect> boxes;
+    int numDetections = output.size[2];
+
+    for (int i = 0; i < numDetections; i++) {
+        float confidence = output.ptr<float>(0)[4 * numDetections + i];
+        if (confidence > 0.5) {
+            float cx = output.ptr<float>(0)[0 * numDetections + i];
+            float cy = output.ptr<float>(0)[1 * numDetections + i];
+            float w = output.ptr<float>(0)[2 * numDetections + i];
+            float h = output.ptr<float>(0)[3 * numDetections + i];
+
+            int left = static_cast<int>((cx - w / 2) * frame.cols / 640);
+            int top = static_cast<int>((cy - h / 2) * frame.rows / 640);
+            int width = static_cast<int>(w * frame.cols / 640);
+            int height = static_cast<int>(h * frame.rows / 640);
+
+            left = max(0, min(left, frame.cols - 1));
+            top = max(0, min(top, frame.rows - 1));
+            width = min(width, frame.cols - left);
+            height = min(height, frame.rows - top);
+
+            if (width > 0 && height > 0) {
+                boxes.push_back(Rect(left, top, width, height));
+                confidences.push_back(confidence);
+            }
+        }
+    }
+    return boxes;
+}
+
+// Helper function to classify cropped regions
+DetectionResult classifyRegion(const Mat& cropped, const Rect& box, Net& netClassification, int frameWidth, int frameHeight) {
+    Mat blob;
+    blobFromImage(cropped, blob, 1.0 / 255.0, Size(224, 224), Scalar(), true, false);
+    netClassification.setInput(blob);
+
+    Mat output = netClassification.forward();
+    Point classIdPoint;
+    double confidence;
+    minMaxLoc(output, 0, &confidence, 0, &classIdPoint);
+    int classId = classConverter(classIdPoint.x);
+
+    Rect adjustedBox = (classId == DICE_CLASS) ? adjustToSquare(box, frameWidth, frameHeight) : box;
+    return { adjustedBox, classId, static_cast<float>(confidence) };
+}
+
+vector<DetectionResult> runDetection(Net& netDetection, Net& netClassification, const Mat& frame, bool useCuda) {
+    vector<DetectionResult> results;
+    Mat resizedFrame = preprocessImage(frame, Size(640, 640), useCuda);
 
     Mat blob;
     blobFromImage(resizedFrame, blob, 1.0 / 255.0, Size(640, 640), Scalar(), true, false);
@@ -124,35 +188,8 @@ Mat detectDice(Net& netDetection, Net& netClassification, const Mat& frame, bool
 
     Mat output = netDetection.forward();
     if (output.dims == 3 && output.size[1] == 5) {
-        vector<Rect> boxes;
         vector<float> confidences;
-
-        int numDetections = output.size[2];
-        for (int i = 0; i < numDetections; i++) {
-            float confidence = output.ptr<float>(0)[4 * numDetections + i];
-            if (confidence > 0.5) {
-                float cx = output.ptr<float>(0)[0 * numDetections + i];
-                float cy = output.ptr<float>(0)[1 * numDetections + i];
-                float w = output.ptr<float>(0)[2 * numDetections + i];
-                float h = output.ptr<float>(0)[3 * numDetections + i];
-
-                int left = static_cast<int>((cx - w / 2) * frame.cols / 640);
-                int top = static_cast<int>((cy - h / 2) * frame.rows / 640);
-                int width = static_cast<int>(w * frame.cols / 640);
-                int height = static_cast<int>(h * frame.rows / 640);
-
-                left = max(0, min(left, frame.cols - 1));
-                top = max(0, min(top, frame.rows - 1));
-                width = min(width, frame.cols - left);
-                height = min(height, frame.rows - top);
-
-                if (width > 0 && height > 0) {
-                    Rect box(left, top, width, height);
-                    boxes.push_back(box);
-                    confidences.push_back(confidence);
-                }
-            }
-        }
+        vector<Rect> boxes = processDetections(output, frame, confidences);
 
         vector<int> indices;
         if (!boxes.empty()) {
@@ -175,55 +212,54 @@ Mat detectDice(Net& netDetection, Net& netClassification, const Mat& frame, bool
                 minMaxLoc(output, 0, &confidence, 0, &classIdPoint);
                 int classId = classConverter(classIdPoint.x);
 
-                rectangle(processedFrame, box, Scalar(0, 255, 0), 2);
-                double fontScale = max(0.5, box.height / 100.0);
-                int thickness = max(1, static_cast<int>(fontScale));
-                putText(processedFrame, "Class " + to_string(classId), Point(box.x, box.y - 10),
-                    FONT_HERSHEY_SIMPLEX, fontScale, Scalar(0, 255, 0), thickness);
+                // Adjust bounding box if the class is DICE_CLASS
+                Rect adjustedBox = (classId == DICE_CLASS) ? adjustToSquare(box, frame.cols, frame.rows) : box;
+
+                results.push_back({ adjustedBox, classId, static_cast<float>(confidence) });
             }
         }
     }
-    return processedFrame;
+    return results;
 }
 
-void runDetectionMode(Net& netDetection, Net& netClassification, const string& imagePath, bool useCuda) {
-    Mat image = imread(imagePath);
-    if (image.empty()) {
-        cout << "Error loading image: " << imagePath << endl;
-        return;
+vector<DetectionResult> detectDice(Net& netDetection, Net& netClassification, const Mat& frame, bool useCuda) {
+    vector<DetectionResult> results;
+    Mat resizedFrame = preprocessImage(frame, Size(640, 640), useCuda);
+
+    Mat blob;
+    blobFromImage(resizedFrame, blob, 1.0 / 255.0, Size(640, 640), Scalar(), true, false);
+    netDetection.setInput(blob);
+
+    Mat output = netDetection.forward();
+    if (output.dims == 3 && output.size[1] == 5) {
+        vector<float> confidences;
+        vector<Rect> boxes = processDetections(output, frame, confidences);
+
+        vector<int> indices;
+        if (!boxes.empty()) {
+            NMSBoxes(boxes, confidences, 0.5, 0.4, indices);
+        }
+
+        for (size_t i = 0; i < indices.size(); ++i) {
+            int idx = indices[i];
+            Rect box = boxes[idx];
+
+            Mat cropped = frame(box).clone();
+            if (!cropped.empty()) {
+                results.push_back(classifyRegion(cropped, box, netClassification, frame.cols, frame.rows));
+            }
+        }
     }
-    Mat result = detectDice(netDetection, netClassification, image, useCuda);
-    Mat scaledResult = scaleToFitScreen(result);
-    imshow("YOLO Dice Detection", scaledResult);
-    waitKey(0);
+    return results;
 }
 
-void runClassificationMode(Net& netClassification, const string& imagePath) {
-    Mat image = imread(imagePath);
-    if (image.empty()) {
-        cout << "Error loading image: " << imagePath << endl;
-        return;
+Mat generateFrame(const Mat& image, const vector<Rect>& boxes, const vector<float>& confidences) {
+    Mat result = image.clone();
+    for (size_t i = 0; i < boxes.size(); ++i) {
+        rectangle(result, boxes[i], Scalar(0, 255, 0), 2);
+        putText(result, to_string(confidences[i]), boxes[i].tl(), FONT_HERSHEY_SIMPLEX, 0.5, Scalar(0, 255, 0), 2);
     }
-    classifyImage(netClassification, image);
-}
-
-void runLiveDetectionMode(Net& netDetection, Net& netClassification, bool useCuda) {
-    VideoCapture cap(0);
-    if (!cap.isOpened()) {
-        cout << "Error opening camera" << endl;
-        return;
-    }
-
-    Mat frame;
-    while (cap.read(frame)) {
-        Mat result = detectDice(netDetection, netClassification, frame, useCuda);
-        Mat scaledResult = scaleToFitScreen(result);
-        imshow("YOLO Dice Detection", scaledResult);
-        if (waitKey(1) == 27) break;
-    }
-
-    cap.release();
-    destroyAllWindows();
+    return result;
 }
 
 extern "C" ARCANE_DLL_API bool InitializeNetworks(const char* detectionModelPath, const char* classificationModelPath, bool useCuda) {
@@ -233,16 +269,52 @@ extern "C" ARCANE_DLL_API bool InitializeNetworks(const char* detectionModelPath
     return true;
 }
 
-extern "C" ARCANE_DLL_API void RunLiveDetection() {
-    runLiveDetectionMode(netDetection, netClassification, useCudaGlobal);
+extern "C" ARCANE_DLL_API DetectionResultArray Detect(const cv::Mat& frame) {
+    const int maxDetections = 100; // Maximum number of detections
+    DetectionResult* results = new DetectionResult[maxDetections];
+    int count = 0;
+
+    Mat resizedFrame = preprocessImage(frame, Size(640, 640), useCudaGlobal);
+
+    Mat blob;
+    blobFromImage(resizedFrame, blob, 1.0 / 255.0, Size(640, 640), Scalar(), true, false);
+    netDetection.setInput(blob);
+
+    Mat output = netDetection.forward();
+    if (output.dims == 3 && output.size[1] == 5) {
+        
+        vector<float> confidences;
+
+        vector<Rect> boxes = processDetections(output, frame, confidences);
+        count = static_cast<int>(boxes.size());
+
+        for (int i = 0; i < count; i++) {
+            Mat cropped = frame(boxes[i]).clone();
+            if (!cropped.empty()) {
+                results[i] = classifyRegion(cropped, boxes[i], netClassification, frame.cols, frame.rows);
+            }
+        }
+    }
+
+    DetectionResultArray resultArray;
+    resultArray.results = results;
+    resultArray.size = count;
+    return resultArray;
 }
 
-extern "C" ARCANE_DLL_API void RunDetection(const char* imagePath) {
-    runDetectionMode(netDetection, netClassification, imagePath, useCudaGlobal);
-}
+extern "C" ARCANE_DLL_API ClassificationResult Classify(const Mat& frame) {
+    Mat blob;
+    blobFromImage(frame, blob, 1.0 / 255.0, Size(224, 224), Scalar(), true, false);
+    netClassification.setInput(blob);
 
-extern "C" ARCANE_DLL_API void RunClassification(const char* imagePath) {
-    runClassificationMode(netClassification, imagePath);
+    Mat output = netClassification.forward();
+    Point classIdPoint;
+    double confidence;
+    minMaxLoc(output, 0, &confidence, 0, &classIdPoint);
+    int classId = classConverter(classIdPoint.x);
+    cout<< "Classified as: " << classId << " with confidence: " << confidence << endl;
+
+    return { classId, static_cast<float>(confidence) };
 }
 
 extern "C" ARCANE_DLL_API void Cleanup() {
