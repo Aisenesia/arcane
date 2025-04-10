@@ -312,7 +312,6 @@ extern "C" ARCANE_DLL_API ClassificationResult Classify(const Mat& frame) {
     double confidence;
     minMaxLoc(output, 0, &confidence, 0, &classIdPoint);
     int classId = classConverter(classIdPoint.x);
-    cout<< "Classified as: " << classId << " with confidence: " << confidence << endl;
 
     return { classId, static_cast<float>(confidence) };
 }
