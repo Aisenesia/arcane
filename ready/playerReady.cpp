@@ -1,120 +1,67 @@
-#include <opencv2/opencv.hpp>
-#include <iostream>
-#include <chrono>
+#include "PlayerReady.h"
+#include <opencv2/imgproc.hpp>
+#include <opencv2/highgui.hpp>
+#include <stdexcept>
 
 using namespace cv;
 using namespace std;
 using namespace std::chrono;
 
-/*
-g++ -std=c++17 -o playerReady playerReady.cpp `pkg-config --cflags --libs opencv4`
-*/
+PlayerReady::PlayerReady(int roiRadius, Point center)
+    : roiRadius(roiRadius), center(center) { 
+    // roiRadius ve center, constructor ile dışarıdan alınıyor
+}
 
-class RedDetector {
-public:
-    RedDetector(int cameraIndex = 0, int roiRadius = 100) : 
-        cap(cameraIndex), roiRadius(roiRadius), hazir(false) {
+void PlayerReady::setFrame(const Mat& newFrame) {
+    newFrame.copyTo(frame);
+}
 
-        if (!cap.isOpened()) {
-            cerr << "Kamera açılamadı!" << endl;
-            exit(-1); // Hata durumunda programdan çık
+bool PlayerReady::checkReady(int secondsToCheck) {
+    if (frame.empty()) {
+        throw runtime_error("Frame has not been set!");
+    }
+
+    auto startTime = high_resolution_clock::now();
+
+    while (true) {
+        if (frame.empty()) {
+            throw runtime_error("Frame is empty!");
         }
 
-        // Dairenin merkezi, frame boyutuna göre başlatılır
-        center = Point(cap.get(CAP_PROP_FRAME_WIDTH) / 2, cap.get(CAP_PROP_FRAME_HEIGHT) / 2);
-    }
-
-    void run() {
-        while (true) {
-            Mat frame;
-            cap >> frame;
-
-            if (frame.empty()) {
-                cerr << "Frame alınamadı!" << endl;
-                break;
+        if (isGreenCovered()) {
+            auto now = high_resolution_clock::now();
+            auto duration = duration_cast<seconds>(now - startTime);
+            if (duration.count() >= secondsToCheck) {
+                return true;
             }
-
-            if (isRedCovered(frame)) {
-                auto currentTime = high_resolution_clock::now();
-                auto duration = duration_cast<seconds>(currentTime - startTime);
-
-                // Kırmızı kapalı kalma süresini göster
-                putText(frame, "Kirmizi Kapali", Point(50, 100), FONT_HERSHEY_SIMPLEX, 1, Scalar(0, 0, 255), 2);
-                // Süreyi göster
-                putText(frame, to_string(duration.count()) + " sn", Point(50, 150), FONT_HERSHEY_SIMPLEX, 1, Scalar(0, 0, 255), 2);
-
-
-                if (duration.count() >= 10 && !hazir) {
-                    hazir = true;
-                    cout << "Oyuncu Hazır!" << endl;
-                    putText(frame, "Oyuncu Hazır!", Point(50, 50), FONT_HERSHEY_SIMPLEX, 1, Scalar(0, 255, 0), 2);
-                }
-            } else {
-                startTime = high_resolution_clock::now();
-                hazir = false;
-            }
-
-            // ROI'yi çiz
-            circle(frame, center, roiRadius, Scalar(0, 255, 0), 2);
-            imshow("Frame", frame);
-
-            if (waitKey(1) == 27) {
-                break;
-            }
+        } else {
+            startTime = high_resolution_clock::now();
         }
 
-        cap.release();
-        destroyAllWindows();
+        if (waitKey(1) == 27) {
+            break;
+        }
     }
 
-private:
-    VideoCapture cap;
-    Point center;
-    int roiRadius;
-    bool hazir;
-    high_resolution_clock::time_point startTime;
+    return false;
+}
 
-    Scalar lowerRed = Scalar(0, 100, 100);
-    Scalar upperRed = Scalar(10, 255, 255);
-    Scalar lowerRed2 = Scalar(160, 100, 100);
-    Scalar upperRed2 = Scalar(179, 255, 255);
+bool PlayerReady::isGreenCovered() {
+    Mat mask = Mat::zeros(frame.size(), CV_8UC1);
+    circle(mask, center, roiRadius, Scalar(255), FILLED);
 
+    Mat hsvFrame;
+    cvtColor(frame, hsvFrame, COLOR_BGR2HSV);
 
-    bool isRedCovered(Mat& frame) {
-        Mat mask = Mat::zeros(frame.size(), CV_8UC1);
-        circle(mask, center, roiRadius, Scalar(255), FILLED);
-    
-        Mat hsvFrame;
-        cvtColor(frame, hsvFrame, COLOR_BGR2HSV);
-    
-        Mat redMask, redMask2, combinedRedMask;
-        inRange(hsvFrame, lowerRed, upperRed, redMask);
-        inRange(hsvFrame, lowerRed2, upperRed2, redMask2);
-        bitwise_or(redMask, redMask2, combinedRedMask);
-    
-        Mat roiRedMask;
-        bitwise_and(combinedRedMask, mask, roiRedMask);
-    
-        // ROI'deki toplam piksel sayısı
-        int totalRoiPixels = countNonZero(mask);
-    
-        // ROI'de kırmızı olmayan piksel sayısı
-        int nonRedPixels = countNonZero(roiRedMask);
-    
-    
-        // Kapsama oranını hesapla
-        double coverageRatio = (double)nonRedPixels / totalRoiPixels;
-    
-        // Kapsama oranı %60'dan büyükse true döndür
-        return coverageRatio <= 0.4; // %60 kapalı ise %40'ı görünür demektir.
-    }
-};
+    Mat greenMask;
+    inRange(hsvFrame, lowerGreen, upperGreen, greenMask);
 
-int main() {
-    RedDetector detector; // Varsayılan kamera ve yarıçap
-    //RedDetector detector(1, 50); // Farklı kamera ve yarıçap için
+    Mat roiGreenMask;
+    bitwise_and(greenMask, mask, roiGreenMask);
 
-    detector.run();
+    int totalPixels = countNonZero(mask);
+    int greenPixels = countNonZero(roiGreenMask);
+    double coverageRatio = static_cast<double>(greenPixels) / totalPixels;
 
-    return 0;
+    return coverageRatio <= 0.4; // Covered if green is NOT dominating
 }
