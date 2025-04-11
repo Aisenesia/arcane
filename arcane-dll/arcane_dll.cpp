@@ -78,9 +78,10 @@ void classifyImage(Net& netClassification, const Mat& image) {
     cout << "Classified as: " << classId << " with confidence: " << confidence << endl;
 }
 
-Net initializeNetwork(const string& modelPath, bool useCuda) {
+Net initializeNetwork(const string& modelPath) {
     Net net = readNetFromONNX(modelPath);
-    if (useCuda && cuda::getCudaEnabledDeviceCount() > 0) {
+
+    if (useCudaGlobal > 0) {
         net.setPreferableBackend(DNN_BACKEND_CUDA);
         net.setPreferableTarget(DNN_TARGET_CUDA_FP16);
     }
@@ -263,9 +264,9 @@ Mat generateFrame(const Mat& image, const vector<Rect>& boxes, const vector<floa
 }
 
 extern "C" ARCANE_DLL_API bool InitializeNetworks(const char* detectionModelPath, const char* classificationModelPath, bool useCuda) {
-    useCudaGlobal = useCuda;
-    netDetection = initializeNetwork(detectionModelPath, useCuda);
-    netClassification = initializeNetwork(classificationModelPath, useCuda);
+	if (useCuda) useCudaGlobal = checkCudaComputeCapability();
+    netDetection = initializeNetwork(detectionModelPath);
+    netClassification = initializeNetwork(classificationModelPath);
     return true;
 }
 
@@ -319,5 +320,6 @@ extern "C" ARCANE_DLL_API ClassificationResult Classify(const Mat& frame) {
 extern "C" ARCANE_DLL_API void Cleanup() {
     netDetection = Net(); // Release the detection network
     netClassification = Net(); // Release the classification network
+	if (useCudaGlobal)
     cuda::resetDevice(); // Reset the CUDA device to release all resources
 }
