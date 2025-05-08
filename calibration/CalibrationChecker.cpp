@@ -38,21 +38,21 @@ bool CalibrationChecker::checkCalibration() {
     cv::Mat mask;
     cv::inRange(hsvFrame, lowerGreen, upperGreen, mask);
     
-    // Gürültüyü azaltmak için morfolojik işlemler
-    cv::Mat kernel = cv::getStructuringElement(cv::MORPH_ELLIPSE, cv::Size(5, 5));
-    cv::morphologyEx(mask, mask, cv::MORPH_OPEN, kernel);
-    cv::morphologyEx(mask, mask, cv::MORPH_CLOSE, kernel);
+    // // Gürültüyü azaltmak için morfolojik işlemler
+    // cv::Mat kernel = cv::getStructuringElement(cv::MORPH_ELLIPSE, cv::Size(5, 5));
+    // cv::morphologyEx(mask, mask, cv::MORPH_OPEN, kernel);
+    // cv::morphologyEx(mask, mask, cv::MORPH_CLOSE, kernel);
     
     // Daireleri algıla (HoughCircles algoritması kullanarak)
     std::vector<cv::Vec3f> circles;
     cv::HoughCircles(mask, circles, cv::HOUGH_GRADIENT, 1, 
                    mask.rows/8,  // Minimum iki daire arasındaki mesafe
                    100, 30,      // Canny ve merkez eşik değerleri
-                   minRadius, minRadius * 5);  // Min ve max yarıçap
+                   minRadius, minRadius * 100);  // Min ve max yarıçap
     
     // Yeterli daire bulunamadıysa
     if (circles.size() < 2) {
-        std::cout << "Yeterli yeşil daire bulunamadı. Algılanan daire sayısı: " << circles.size() << std::endl;
+        //std::cout << "Yeterli yeşil daire bulunamadı. Algılanan daire sayısı: " << circles.size() << std::endl;
         return false;
     }
     

@@ -18,33 +18,43 @@ void PlayerReady::setFrame(const Mat& newFrame) {
 
 bool PlayerReady::checkReady(int secondsToCheck) {
     if (frame.empty()) {
-        throw runtime_error("Frame has not been set!");
+        throw std::runtime_error("Frame has not been set!");
     }
 
-    auto startTime = high_resolution_clock::now();
+    bool greenCovered = isGreenCovered();
 
-    while (true) {
-        if (frame.empty()) {
-            throw runtime_error("Frame is empty!");
+    // Başlangıçta bir kez yeşil görünmeli
+    if (!hasSeenGreen) {
+        if (!greenCovered) {
+            hasSeenGreen = true;
+            printf("Yeşil görüldü!\n");
+        } else {
+            return false; // Yeşil hiç görünmediyse erken çık
         }
+    }
 
-        if (isGreenCovered()) {
-            auto now = high_resolution_clock::now();
-            auto duration = duration_cast<seconds>(now - startTime);
+    // Yeşil daha önce görüldüyse artık zaman takibine geçilir
+    if (greenCovered) {
+        if (!timerStarted) {
+            startTime = std::chrono::high_resolution_clock::now();
+            timerStarted = true;
+        } else {
+            auto now = std::chrono::high_resolution_clock::now();
+            auto duration = std::chrono::duration_cast<std::chrono::seconds>(now - startTime);
             if (duration.count() >= secondsToCheck) {
                 return true;
             }
-        } else {
-            startTime = high_resolution_clock::now();
         }
-
-        if (waitKey(1) == 27) {
-            break;
-        }
+    } else {
+        timerStarted = false; // süre sıfırlanır
     }
 
     return false;
 }
+
+
+
+
 
 bool PlayerReady::isGreenCovered() {
     Mat mask = Mat::zeros(frame.size(), CV_8UC1);

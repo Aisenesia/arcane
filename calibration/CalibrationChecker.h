@@ -4,6 +4,10 @@
 #include <opencv2/opencv.hpp>
 #include <vector>
 
+
+// g++ -std=c++17 main.cpp CalibrationChecker.cpp -o calibration_checker `pkg-config --cflags --libs opencv4`
+
+
 class CalibrationChecker {
 private:
     cv::Mat currentFrame;

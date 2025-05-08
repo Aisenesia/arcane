@@ -9,15 +9,19 @@ public:
     PlayerReady(int roiRadius, cv::Point center);
 
     void setFrame(const cv::Mat& newFrame);
-    bool checkReady(int secondsToCheck = 3);
+    bool checkReady(int secondsToCheck); // her karede çağrılır, ama zaman içinde karar verir
 
 private:
-    cv::Mat frame;
-    cv::Point center;
     int roiRadius;
+    cv::Point center;
+    cv::Mat frame;
 
-    cv::Scalar lowerGreen = cv::Scalar(40, 50, 50);
-    cv::Scalar upperGreen = cv::Scalar(80, 255, 255);
+    bool hasSeenGreen = false;
+    std::chrono::time_point<std::chrono::high_resolution_clock> startTime;
+    bool timerStarted = false;
+
+    cv::Scalar lowerGreen = cv::Scalar(35, 50, 50);
+    cv::Scalar upperGreen = cv::Scalar(85, 255, 255);
 
     bool isGreenCovered();
 };
