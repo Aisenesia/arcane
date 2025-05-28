@@ -69,14 +69,12 @@
   <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
   </ImportGroup>
-  <PropertyGroup Label="UserMacros" />
-  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
-    <IncludePath>$(VC_IncludePath);$(WindowsSDK_IncludePath);C:\Users\Hakan\source\repos\arcane-dll\arcane-dll;C:\libc\opencv-cuda\include</IncludePath>
-    <LibraryPath>$(VC_LibraryPath_x64);$(WindowsSDK_LibraryPath_x64);C:\Users\Hakan\source\repos\arcane-dll\x64\Release</LibraryPath>
-  </PropertyGroup>
-  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
-    <IncludePath>$(VC_IncludePath);$(WindowsSDK_IncludePath);C:\Users\Hakan\source\repos\arcane-dll\arcane-dll;C:\libc\opencv-cuda\include</IncludePath>
-    <LibraryPath>$(VC_LibraryPath_x64);$(WindowsSDK_LibraryPath_x64);C:\Users\Hakan\source\repos\arcane-dll\x64\Release</LibraryPath>
+  <PropertyGroup Label="UserMacros" />  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+    <IncludePath>$(VC_IncludePath);$(WindowsSDK_IncludePath);C:\libc\opencv-cuda\include</IncludePath>
+    <LibraryPath>$(VC_LibraryPath_x64);$(WindowsSDK_LibraryPath_x64)</LibraryPath>
+  </PropertyGroup>  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+    <IncludePath>$(VC_IncludePath);$(WindowsSDK_IncludePath);C:\libc\opencv-cuda\include</IncludePath>
+    <LibraryPath>$(VC_LibraryPath_x64);$(WindowsSDK_LibraryPath_x64)</LibraryPath>
   </PropertyGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
     <ClCompile>
@@ -113,12 +111,11 @@
       <PreprocessorDefinitions>_DEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
       <LanguageStandard>stdcpp17</LanguageStandard>
-    </ClCompile>
-    <Link>
+    </ClCompile>    <Link>
       <SubSystem>Console</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
       <AdditionalLibraryDirectories>C:\libc\opencv-cuda\x64\vc17\lib;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
-      <AdditionalDependencies>$(CoreLibraryDependencies);%(AdditionalDependencies);C:\Users\Hakan\source\repos\arcane-dll\x64\Release\arcane-dll.lib;opencv_core4110.lib;opencv_cudawarping4110.lib;opencv_dnn4110.lib;opencv_highgui4110.lib;opencv_imgcodecs4110.lib;opencv_imgproc4110.lib;opencv_videoio4110.lib</AdditionalDependencies>
+      <AdditionalDependencies>$(CoreLibraryDependencies);%(AdditionalDependencies);opencv_core4110.lib;opencv_cudawarping4110.lib;opencv_dnn4110.lib;opencv_highgui4110.lib;opencv_imgcodecs4110.lib;opencv_imgproc4110.lib;opencv_videoio4110.lib;opencv_objdetect4110.lib</AdditionalDependencies>
     </Link>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
@@ -130,21 +127,24 @@
       <PreprocessorDefinitions>NDEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
       <LanguageStandard>stdcpp17</LanguageStandard>
-    </ClCompile>
-    <Link>
+    </ClCompile>    <Link>
       <SubSystem>Console</SubSystem>
       <EnableCOMDATFolding>true</EnableCOMDATFolding>
       <OptimizeReferences>true</OptimizeReferences>
       <GenerateDebugInformation>true</GenerateDebugInformation>
       <AdditionalLibraryDirectories>C:\libc\opencv-cuda\x64\vc17\lib;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
-      <AdditionalDependencies>$(CoreLibraryDependencies);%(AdditionalDependencies);C:\Users\Hakan\source\repos\arcane-dll\x64\Release\arcane-dll.lib;opencv_core4110.lib;opencv_cudawarping4110.lib;opencv_dnn4110.lib;opencv_highgui4110.lib;opencv_imgcodecs4110.lib;opencv_imgproc4110.lib;opencv_videoio4110.lib</AdditionalDependencies>
+      <AdditionalDependencies>$(CoreLibraryDependencies);%(AdditionalDependencies);opencv_core4110.lib;opencv_cudawarping4110.lib;opencv_dnn4110.lib;opencv_highgui4110.lib;opencv_imgcodecs4110.lib;opencv_imgproc4110.lib;opencv_videoio4110.lib;opencv_objdetect4110.lib</AdditionalDependencies>
     </Link>
-  </ItemDefinitionGroup>
-  <ItemGroup>
+  </ItemDefinitionGroup>  <ItemGroup>
     <ClCompile Include="arcane-dll-tester.cpp" />
+    <ClCompile Include="network_manager.cpp" />
+    <ClCompile Include="game_components.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="arcane_dll.h" />
+    <ClInclude Include="detection_types.h" />
+    <ClInclude Include="network_manager.h" />
+    <ClInclude Include="game_components.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
