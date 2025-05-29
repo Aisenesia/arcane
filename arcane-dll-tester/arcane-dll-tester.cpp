@@ -1088,7 +1088,7 @@ void processUnrealCommand(cv::VideoCapture &cap)
 
     // Setup calibration for monitoring
     cv::Point centers[] = {cv::Point(135, 120), cv::Point(1783, 938)};
-    int radii[2] = {84, 84};
+    int radii[2] = {72, 72};
 
     // Create calibration checker instance
     std::vector<cv::Point> centerVec = {centers[0], centers[1]};
@@ -1096,8 +1096,8 @@ void processUnrealCommand(cv::VideoCapture &cap)
     CalibrationChecker calibrationChecker(centerVec, radiiVec);
 
     // Setup ready properties for monitoring. centered at the mıddle of the screen
-    cv::Point readyCenter(100, 100);
-    int readyRadius = 50;
+    cv::Point readyCenter(800, 120);
+    int readyRadius = 100;
     int secondsToWait = 3;
 
     // Create player ready checker instance
@@ -1120,18 +1120,40 @@ void processUnrealCommand(cv::VideoCapture &cap)
         playerReadyChecker.setFrame(frame);
 
         bool calibrationCorrect = calibrationChecker.checkCalibration();
-        bool playerReady = playerReadyChecker.checkReady();        // Run detection on frame
-        DetectionResultArray detectionResults = NetworkManager::detect(frame);
+        bool playerReady = playerReadyChecker.checkReady();       
+
+        cv::Mat resizedFrame = frame.clone();
+        // Cut the frame centered at the middle: 500px left + 500px right = 1000px total width, full height
+        int cropWidth = 1000;  // 500px left + 500px right from center
+        int cropHeight = frame.rows;  // Keep full height (900px)
+        int xOffset = (frame.cols - cropWidth) / 2;  // Center horizontally
+        int yOffset = 0;  // No vertical offset, keep full height
+        cv::Rect cropRegion(xOffset, yOffset, cropWidth, cropHeight);
+        resizedFrame = resizedFrame(cropRegion);
+
+        // draw the crop region on the frame
+        cv::rectangle(frame, cropRegion, cv::Scalar(0, 255, 255), 2);
+
+        DetectionResultArray detectionResults = NetworkManager::detect(resizedFrame);
 
         // Separate dice and card detections
         std::vector<DetectionResult> cardDetections;
         std::vector<DetectionResult> diceDetections;
         
         for (int i = 0; i < detectionResults.size; i++)
-        {            if (detectionResults.results[i].classId == DICE_CLASS)
+        {
+            // This is a dice detection - crop and classify
+            cv::Rect diceBox = detectionResults.results[i].boundingBox;
+
+            diceBox.x += xOffset; // Add crop region's starting x position
+            diceBox.y += yOffset; // Add crop region's starting y position (though yOffset is 0 in this case)
+
+
+            if (detectionResults.results[i].classId == DICE_CLASS)
             {
-                // This is a dice detection - crop and classify
-                cv::Rect diceBox = detectionResults.results[i].boundingBox;
+                
+                
+                
                 cv::Mat diceCrop = frame(diceBox);
                 
                 // Classify the dice face

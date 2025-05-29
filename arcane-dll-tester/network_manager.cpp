@@ -145,7 +145,7 @@ std::vector<cv::Rect> NetworkManager::processDetections(const cv::Mat& output, c
                 float classScore = output.ptr<float>(0)[c * numDetections + i];
                 if (classScore > bestClassScore) {
                     bestClassScore = classScore;
-                    bestClassId = c - 5; // Adjust for 0-based indexing (classes start at index 5, so class 0 is at index 5)
+                    bestClassId = c - 4; // Adjust for 0-based indexing (classes start at index 5, so class 0 is at index 5)
                 }
             }
 
