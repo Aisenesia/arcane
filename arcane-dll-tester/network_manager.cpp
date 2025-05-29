@@ -128,37 +128,83 @@ cv::Rect NetworkManager::adjustToSquare(const cv::Rect& box, int frameWidth, int
     return cv::Rect(newLeft, newTop, newRight - newLeft, newBottom - newTop);
 }
 
-std::vector<cv::Rect> NetworkManager::processDetections(const cv::Mat& output, const cv::Mat& frame, 
+std::vector<cv::Rect> NetworkManager::processDetections(const cv::Mat& output, const cv::Mat& frame,
                                                        std::vector<float>& confidences, std::vector<int>& classIds) {
     std::vector<cv::Rect> boxes;
-    int numDetections = output.size[2];    for (int i = 0; i < numDetections; i++) {
-        float confidence = output.ptr<float>(0)[4 * numDetections + i];
-        if (confidence >= 0.5) { // Changed to >= 0.5 to include 0.5 threshold
-            float cx = output.ptr<float>(0)[0 * numDetections + i];
-            float cy = output.ptr<float>(0)[1 * numDetections + i];
-            float w = output.ptr<float>(0)[2 * numDetections + i];
-            float h = output.ptr<float>(0)[3 * numDetections + i];            // Extract class information - typically the class with highest probability
-            // For YOLO models, classes usually start from index 5
-            int bestClassId = 0;
-            float bestClassScore = 0;
-            for (int c = 5; c < output.size[1]; c++) {
-                float classScore = output.ptr<float>(0)[c * numDetections + i];
-                if (classScore > bestClassScore) {
-                    bestClassScore = classScore;
-                    bestClassId = c - 4; // Adjust for 0-based indexing (classes start at index 5, so class 0 is at index 5)
-                }
+    
+    // Debug: Print actual output dimensions
+    std::cout << "YOLO Output Debug:" << std::endl;
+    std::cout << "  Dimensions: " << output.dims << std::endl;
+    std::cout << "  Shape: [";
+    for (int i = 0; i < output.dims; i++) {
+        std::cout << output.size[i];
+        if (i < output.dims - 1) std::cout << ", ";
+    }
+    std::cout << "]" << std::endl;
+    std::cout << "  Frame size: " << frame.cols << "x" << frame.rows << std::endl;
+    
+    int numDetections = output.size[2]; // Should be 8400
+    int numAttributes = output.size[1]; // Should be 16 (4 bbox + 12 classes)
+    int validDetections = 0;
+    
+    // YOLOv8/v11 format: [x, y, w, h, class0_prob, class1_prob, ..., class11_prob]
+    // With shape [1, 16, 8400], we have 4 bbox coords + 12 class probabilities
+    int numClasses = numAttributes - 4; // 16 - 4 = 12 classes
+    
+    for (int i = 0; i < numDetections; i++) {
+        // Extract bounding box coordinates (first 4 attributes)
+        float cx = output.ptr<float>(0)[0 * numDetections + i]; // x center
+        float cy = output.ptr<float>(0)[1 * numDetections + i]; // y center  
+        float w = output.ptr<float>(0)[2 * numDetections + i];  // width
+        float h = output.ptr<float>(0)[3 * numDetections + i];  // height
+        
+        // Find the class with highest probability (attributes 4-15)
+        int bestClassId = 0;
+        float bestClassScore = 0;
+        
+        for (int c = 0; c < numClasses; c++) {
+            float classScore = output.ptr<float>(0)[(4 + c) * numDetections + i];
+            if (classScore > bestClassScore) {
+                bestClassScore = classScore;
+                bestClassId = c;
             }
-
-            int left = static_cast<int>((cx - w / 2) * frame.cols / 640);
-            int top = static_cast<int>((cy - h / 2) * frame.rows / 640);
-            int width = static_cast<int>(w * frame.cols / 640);
-            int height = static_cast<int>(h * frame.rows / 640);
-
+        }
+        
+        // Use the highest class score as confidence
+        float confidence = bestClassScore;
+        
+        if (confidence >= 0.5) {
+            validDetections++;
+            
+            // Debug: Print first few detections
+            if (validDetections <= 3) {
+                std::cout << "  Detection " << validDetections << ": conf=" << confidence 
+                         << ", cx=" << cx << ", cy=" << cy << ", w=" << w << ", h=" << h << std::endl;
+                std::cout << "    Best class: " << bestClassId << " (score=" << bestClassScore << ")" << std::endl;
+            }
+              // Convert from 640x640 model coordinates to actual frame coordinates
+            // YOLO outputs coordinates relative to 640x640 input size
+            float scaleX = static_cast<float>(frame.cols) / 640.0f;
+            float scaleY = static_cast<float>(frame.rows) / 640.0f;
+            
+            int left = static_cast<int>((cx - w / 2) * scaleX);
+            int top = static_cast<int>((cy - h / 2) * scaleY);
+            int width = static_cast<int>(w * scaleX);
+            int height = static_cast<int>(h * scaleY);
+            
+            // Debug: Print converted coordinates for first few detections
+            if (validDetections <= 3) {
+                std::cout << "    Pixel coords: x=" << left << ", y=" << top 
+                         << ", w=" << width << ", h=" << height << std::endl;
+            }
+            
+            // Ensure bounding box is within frame boundaries
             left = std::max(0, std::min(left, frame.cols - 1));
             top = std::max(0, std::min(top, frame.rows - 1));
             width = std::min(width, frame.cols - left);
             height = std::min(height, frame.rows - top);
-
+            
+            // Only add valid detections
             if (width > 0 && height > 0) {
                 boxes.push_back(cv::Rect(left, top, width, height));
                 confidences.push_back(confidence);
@@ -166,6 +212,10 @@ std::vector<cv::Rect> NetworkManager::processDetections(const cv::Mat& output, c
             }
         }
     }
+    
+    std::cout << "  Total valid detections: " << validDetections << std::endl;
+    std::cout << "  Final boxes count: " << boxes.size() << std::endl;
+    
     return boxes;
 }
 
@@ -194,15 +244,22 @@ DetectionResultArray NetworkManager::detect(const cv::Mat& frame) {
     cv::Mat blob;
     cv::dnn::blobFromImage(resizedFrame, blob, 1.0 / 255.0, cv::Size(640, 640), cv::Scalar(), true, false);
     netDetection.setInput(blob);    cv::Mat output = netDetection.forward();
+    std::cout << "Detection Debug - Forward pass completed" << std::endl;
+    
     if (output.dims == 3 && output.size[1] >= 5) {
         std::vector<float> confidences;
         std::vector<int> classIds;
         std::vector<cv::Rect> boxes = processDetections(output, frame, confidences, classIds);
 
+        std::cout << "Before NMS: " << boxes.size() << " boxes" << std::endl;
+        
         std::vector<int> indices;
         if (!boxes.empty()) {
             cv::dnn::NMSBoxes(boxes, confidences, 0.5, 0.4, indices);
-        }        count = std::min(static_cast<int>(indices.size()), MAX_DETECTIONS);
+        }
+        
+        std::cout << "After NMS: " << indices.size() << " boxes" << std::endl;
+        count = std::min(static_cast<int>(indices.size()), MAX_DETECTIONS);
         
         // Simply collect all detections without filtering
         for (int i = 0; i < count; i++) {

@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <thread>
 #include <chrono>
+#include <iomanip>    // For std::setprecision
 #include <filesystem> // For checking file existence
 #include <cstring>    // Add this for strcpy_s
 
@@ -777,14 +778,15 @@ std::string receiveFromQRCode(cv::VideoCapture &cap, int userNumber)
                 {
                     cv::line(displayFrame, points[i], points[(i + 1) % 4], cv::Scalar(0, 255, 0), 3);
                 }
-            }            cv::putText(displayFrame, "QR Code Found!",
+            }
+            cv::putText(displayFrame, "QR Code Found!",
                         cv::Point(30, 90), cv::FONT_HERSHEY_SIMPLEX, 0.7, cv::Scalar(0, 255, 0), 2);
 
             cv::imshow(WINDOW_NAME, displayFrame);
-            
+
             // Check and save window size before showing result
             // checkAndSaveWindowSize();
-            
+
             cv::waitKey(2000); // Show result for 2 seconds
 
             return decodedText;
@@ -793,8 +795,9 @@ std::string receiveFromQRCode(cv::VideoCapture &cap, int userNumber)
         {
             cv::putText(displayFrame, "Scanning for QR code...",
                         cv::Point(30, 90), cv::FONT_HERSHEY_SIMPLEX, 0.5, cv::Scalar(255, 255, 0), 2);
-        }        cv::imshow(WINDOW_NAME, displayFrame);
-        
+        }
+        cv::imshow(WINDOW_NAME, displayFrame);
+
         // Check and save window size if changed (periodically)
         // checkAndSaveWindowSize();
 
@@ -1025,7 +1028,7 @@ void processUnrealCommand(cv::VideoCapture &cap)
                 // Check if ESP8266 is still waiting for users
                 if (receivedData.find("WAITING:") == 0)
                 {
-                    
+
                     std::this_thread::sleep_for(std::chrono::seconds(2));
                     continue;
                 }
@@ -1120,14 +1123,14 @@ void processUnrealCommand(cv::VideoCapture &cap)
         playerReadyChecker.setFrame(frame);
 
         bool calibrationCorrect = calibrationChecker.checkCalibration();
-        bool playerReady = playerReadyChecker.checkReady();       
+        bool playerReady = playerReadyChecker.checkReady();
 
         cv::Mat resizedFrame = frame.clone();
         // Cut the frame centered at the middle: 500px left + 500px right = 1000px total width, full height
-        int cropWidth = 1000;  // 500px left + 500px right from center
-        int cropHeight = frame.rows;  // Keep full height (900px)
-        int xOffset = (frame.cols - cropWidth) / 2;  // Center horizontally
-        int yOffset = 0;  // No vertical offset, keep full height
+        int cropWidth = 1000;                       // 500px left + 500px right from center
+        int cropHeight = frame.rows;                // Keep full height (900px)
+        int xOffset = (frame.cols - cropWidth) / 2; // Center horizontally
+        int yOffset = 0;                            // No vertical offset, keep full height
         cv::Rect cropRegion(xOffset, yOffset, cropWidth, cropHeight);
         resizedFrame = resizedFrame(cropRegion);
 
@@ -1139,7 +1142,7 @@ void processUnrealCommand(cv::VideoCapture &cap)
         // Separate dice and card detections
         std::vector<DetectionResult> cardDetections;
         std::vector<DetectionResult> diceDetections;
-        
+
         for (int i = 0; i < detectionResults.size; i++)
         {
             // This is a dice detection - crop and classify
@@ -1148,17 +1151,14 @@ void processUnrealCommand(cv::VideoCapture &cap)
             diceBox.x += xOffset; // Add crop region's starting x position
             diceBox.y += yOffset; // Add crop region's starting y position (though yOffset is 0 in this case)
 
-
             if (detectionResults.results[i].classId == DICE_CLASS)
             {
-                
-                
-                
+
                 cv::Mat diceCrop = frame(diceBox);
-                
+
                 // Classify the dice face
                 ClassificationResult classResult = NetworkManager::classify(diceCrop);
-                
+
                 // Apply confidence filtering: only accept dice face classifications > 0.9 confidence
                 if (classResult.confidence > 0.9)
                 {
@@ -1167,10 +1167,8 @@ void processUnrealCommand(cv::VideoCapture &cap)
                     diceResult.boundingBox = diceBox;
                     diceResult.classId = classResult.classId;
                     diceResult.confidence = classResult.confidence;
-                    
+
                     diceDetections.push_back(diceResult);
-                    
-                    
                 }
             }
             else
@@ -1189,16 +1187,16 @@ void processUnrealCommand(cv::VideoCapture &cap)
         cv::putText(frame, readyStatus, cv::Point(30, 60), cv::FONT_HERSHEY_SIMPLEX, 0.7,
                     playerReady ? cv::Scalar(0, 255, 0) : cv::Scalar(0, 0, 255), 2);
 
-        if(calibrationCorrect)
+        if (calibrationCorrect)
         {
             // dump all detections and classifications to console in one line
             std::string readyStatus = playerReady ? "READY" : "NOT READY";
             std::cout << readyStatus << "Detections: ";
-            for (const auto& card : cardDetections)
+            for (const auto &card : cardDetections)
             {
                 std::cout << "CARD:" << card.classId << " (" << std::fixed << std::setprecision(2) << card.confidence << "), ";
             }
-            for (const auto& dice : diceDetections)
+            for (const auto &dice : diceDetections)
             {
                 std::cout << "DICE:" << dice.classId << " (" << std::fixed << std::setprecision(2) << dice.confidence << "), ";
             }
@@ -1208,29 +1206,29 @@ void processUnrealCommand(cv::VideoCapture &cap)
         for (size_t i = 0; i < 2; ++i)
         {
             cv::circle(frame, centers[i], radii[i], cv::Scalar(255, 0, 0), 2);
-        }        // Draw ready circle
+        } // Draw ready circle
         cv::circle(frame, readyCenter, readyRadius, cv::Scalar(0, 255, 0), 2);
 
         // Draw card detections (using detection class)
-        for (const auto& card : cardDetections)
+        for (const auto &card : cardDetections)
         {
             cv::Scalar cardColor = cv::Scalar(255, 0, 0); // Red for cards
             cv::rectangle(frame, card.boundingBox, cardColor, 2);
-            
+
             std::string cardLabel = "CARD ID:" + std::to_string(card.classId) + " (" + std::to_string(card.confidence).substr(0, 4) + ")";
-            cv::putText(frame, cardLabel, cv::Point(card.boundingBox.x, card.boundingBox.y - 10), 
-                       cv::FONT_HERSHEY_SIMPLEX, 0.5, cardColor, 2);
+            cv::putText(frame, cardLabel, cv::Point(card.boundingBox.x, card.boundingBox.y - 10),
+                        cv::FONT_HERSHEY_SIMPLEX, 0.5, cardColor, 2);
         }
-        
+
         // Draw dice detections (using classification class)
-        for (const auto& dice : diceDetections)
+        for (const auto &dice : diceDetections)
         {
             cv::Scalar diceColor = cv::Scalar(0, 255, 0); // Green for dice
             cv::rectangle(frame, dice.boundingBox, diceColor, 2);
-            
+
             std::string diceLabel = "DICE FACE:" + std::to_string(dice.classId) + " (" + std::to_string(dice.confidence).substr(0, 4) + ")";
-            cv::putText(frame, diceLabel, cv::Point(dice.boundingBox.x, dice.boundingBox.y - 10), 
-                       cv::FONT_HERSHEY_SIMPLEX, 0.5, diceColor, 2);
+            cv::putText(frame, diceLabel, cv::Point(dice.boundingBox.x, dice.boundingBox.y - 10),
+                        cv::FONT_HERSHEY_SIMPLEX, 0.5, diceColor, 2);
         }
 
         // Check if all conditions are met
@@ -1240,8 +1238,9 @@ void processUnrealCommand(cv::VideoCapture &cap)
             cv::putText(frame, allConditionsMet, cv::Point(30, 160), cv::FONT_HERSHEY_SIMPLEX, 1,
                         cv::Scalar(0, 255, 255), 3);
             std::cout << "All conditions met at: " << std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count() << "ms" << std::endl;
-        }        cv::imshow(WINDOW_NAME, frame);
-        
+        }
+        cv::imshow(WINDOW_NAME, frame);
+
         // Check and save window size if changed (periodically)
         // checkAndSaveWindowSize();
 
@@ -1261,6 +1260,7 @@ void processUnrealCommand(cv::VideoCapture &cap)
 // Function declarations
 void setupWindow();
 void processUnrealCommand(cv::VideoCapture &cap);
+void processModelDebugCommand(cv::VideoCapture &cap);
 bool checkCardsInReadyArea(const cv::Mat &frame);
 bool checkDiceVisible(const cv::Mat &frame);
 std::string receiveFromQRCode(cv::VideoCapture &cap, int userNumber = 0);
@@ -1328,18 +1328,102 @@ int main(int argc, char *argv[])
         {
             processUnrealCommand(cap);
         }
+        else if (command == "--model-debug")
+        {
+            processModelDebugCommand(cap);
+        }
         else
         {
             std::cerr << "Invalid command: " << command << std::endl;
         }
 
         cap.release();
-    }    // Save final window size before exit
+    } // Save final window size before exit
 
-    
     // Release GPU resources before exiting
     NetworkManager::cleanup();
     cv::destroyAllWindows();
 
     return 0;
+}
+
+// Function to test and debug network models without full game logic
+void processModelDebugCommand(cv::VideoCapture &cap)
+{
+    std::cout << "\n" << std::string(60, '=') << std::endl;
+    std::cout << "           MODEL DEBUG MODE" << std::endl;
+    std::cout << std::string(60, '=') << std::endl;
+
+    const char *detectionModelPath = "dtc.onnx";
+    const char *classificationModelPath = "cls.onnx";
+
+    // Initialize networks
+    std::cout << "🔄 Initializing neural networks..." << std::endl;
+    if (!NetworkManager::initializeNetworks(detectionModelPath, classificationModelPath, true))
+    {
+        std::cerr << "❌ Failed to initialize networks. Please check the model files and paths." << std::endl;
+        return;
+    }
+
+    std::cout << "✅ Networks initialized successfully!" << std::endl;
+    std::cout << "🎯 CUDA enabled: " << (NetworkManager::isUsingCuda() ? "Yes" : "No") << std::endl;
+    
+    setupWindow();
+    
+    std::cout << "\n📹 Starting camera feed for model testing..." << std::endl;
+    std::cout << "Press 'q' to quit" << std::endl;
+    
+    cv::Mat frame;
+    bool running = true;
+    
+    while (running && cap.read(frame))
+    {
+        if (frame.empty()) break;
+        
+        // Run detection on current frame
+        DetectionResultArray detectionResults = NetworkManager::detect(frame);
+        
+        // Draw all detections with bounding boxes
+        cv::Mat displayFrame = frame.clone();
+        
+        for (int i = 0; i < detectionResults.size; i++)
+        {
+            DetectionResult result = detectionResults.results[i];
+            
+            // Choose color based on detection type
+            cv::Scalar color = (result.classId == DICE_CLASS) ? 
+                             cv::Scalar(0, 255, 0) : cv::Scalar(0, 0, 255); // Green for dice, red for cards
+            
+            // Draw bounding box
+            cv::rectangle(displayFrame, result.boundingBox, color, 2);
+            
+            // Draw label with class and confidence
+            std::string label = (result.classId == DICE_CLASS ? "DICE" : "CARD") + 
+                               std::string(":") + std::to_string(result.classId) + 
+                               " (" + std::to_string(static_cast<int>(result.confidence * 100)) + "%)";
+            
+            cv::putText(displayFrame, label, 
+                       cv::Point(result.boundingBox.x, result.boundingBox.y - 10),
+                       cv::FONT_HERSHEY_SIMPLEX, 0.5, color, 1);
+        }
+        
+        // Draw title and info
+        cv::putText(displayFrame, "MODEL DEBUG MODE", cv::Point(10, 30),
+                   cv::FONT_HERSHEY_SIMPLEX, 1, cv::Scalar(255, 255, 255), 2);
+        cv::putText(displayFrame, "Detections: " + std::to_string(detectionResults.size), 
+                   cv::Point(10, 60), cv::FONT_HERSHEY_SIMPLEX, 0.6, cv::Scalar(255, 255, 255), 1);
+        cv::putText(displayFrame, "Press 'q' to quit", cv::Point(10, 85), 
+                   cv::FONT_HERSHEY_SIMPLEX, 0.6, cv::Scalar(255, 255, 255), 1);
+        
+        cv::imshow(WINDOW_NAME, displayFrame);
+        
+        char key = cv::waitKey(1) & 0xFF;
+        if (key == 'q' || key == 27) // 'q' or ESC
+        {
+            running = false;
+        }
+    }
+    
+    std::cout << "\nModel debug session ended." << std::endl;
+    cv::destroyAllWindows();
 }
