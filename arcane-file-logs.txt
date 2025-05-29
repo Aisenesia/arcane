@@ -1,0 +1,24 @@
+Current working directory: C:\Users\Hakan\source\repos\arcane-dll-tester
+Directory contents:
+[DIR]  .git
+[FILE] .gitattributes (2581 bytes)
+[FILE] .gitignore (6597 bytes)
+[DIR]  .vs
+[DIR]  .vscode
+[DIR]  arcane-dll-tester
+[FILE] arcane-dll-tester.sln (1479 bytes)
+[FILE] arcane-file-logs.txt (0 bytes)
+[DIR]  x64
+
+Current working directory: C:\Users\Hakan\source\repos\arcane-dll-tester
+Directory contents:
+[DIR]  .git
+[FILE] .gitattributes (2581 bytes)
+[FILE] .gitignore (6597 bytes)
+[DIR]  .vs
+[DIR]  .vscode
+[DIR]  arcane-dll-tester
+[FILE] arcane-dll-tester.sln (1479 bytes)
+[FILE] arcane-file-logs.txt (326 bytes)
+[DIR]  x64
+

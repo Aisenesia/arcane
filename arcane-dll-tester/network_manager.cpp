@@ -6,7 +6,7 @@
 #include <algorithm>
 #include <map>
 
-#define DICE_CLASS 1 // Define DICE_CLASS here since it's used in classifyRegion
+#define DICE_CLASS 0 // Define DICE_CLASS here since it's used in classifyRegion
 
 // Static member definitions
 cv::dnn::Net NetworkManager::netDetection;
@@ -131,17 +131,13 @@ cv::Rect NetworkManager::adjustToSquare(const cv::Rect& box, int frameWidth, int
 std::vector<cv::Rect> NetworkManager::processDetections(const cv::Mat& output, const cv::Mat& frame, 
                                                        std::vector<float>& confidences, std::vector<int>& classIds) {
     std::vector<cv::Rect> boxes;
-    int numDetections = output.size[2];
-
-    for (int i = 0; i < numDetections; i++) {
+    int numDetections = output.size[2];    for (int i = 0; i < numDetections; i++) {
         float confidence = output.ptr<float>(0)[4 * numDetections + i];
-        if (confidence > 0.5) {
+        if (confidence >= 0.5) { // Changed to >= 0.5 to include 0.5 threshold
             float cx = output.ptr<float>(0)[0 * numDetections + i];
             float cy = output.ptr<float>(0)[1 * numDetections + i];
             float w = output.ptr<float>(0)[2 * numDetections + i];
-            float h = output.ptr<float>(0)[3 * numDetections + i];
-            
-            // Extract class information - typically the class with highest probability
+            float h = output.ptr<float>(0)[3 * numDetections + i];            // Extract class information - typically the class with highest probability
             // For YOLO models, classes usually start from index 5
             int bestClassId = 0;
             float bestClassScore = 0;
@@ -149,7 +145,7 @@ std::vector<cv::Rect> NetworkManager::processDetections(const cv::Mat& output, c
                 float classScore = output.ptr<float>(0)[c * numDetections + i];
                 if (classScore > bestClassScore) {
                     bestClassScore = classScore;
-                    bestClassId = c - 4; // Adjust for 0-based indexing (assuming first 5 are box coords + confidence)
+                    bestClassId = c - 5; // Adjust for 0-based indexing (classes start at index 5, so class 0 is at index 5)
                 }
             }
 
@@ -206,26 +202,16 @@ DetectionResultArray NetworkManager::detect(const cv::Mat& frame) {
         std::vector<int> indices;
         if (!boxes.empty()) {
             cv::dnn::NMSBoxes(boxes, confidences, 0.5, 0.4, indices);
-        }
+        }        count = std::min(static_cast<int>(indices.size()), MAX_DETECTIONS);
         
-        count = std::min(static_cast<int>(indices.size()), MAX_DETECTIONS);
+        // Simply collect all detections without filtering
         for (int i = 0; i < count; i++) {
             int idx = indices[i];
             cv::Rect box = boxes[idx];
             int detectedClassId = classIds[idx];
-
-            cv::Mat cropped = frame(box).clone();
-            if (!cropped.empty()) {
-                // Only classify if this is a dice detection (class 1)
-                if (detectedClassId == DICE_CLASS) {
-                    // Use classification model to determine dice face
-                    results[i] = classifyRegion(cropped, box, netClassification, frame.cols, frame.rows);
-                } else {
-                    // For non-dice objects (cards), use the detection class directly
-                    cv::Rect adjustedBox = box; // No adjustment needed for cards
-                    results[i] = { adjustedBox, detectedClassId, confidences[idx] };
-                }
-            }
+            
+            // Store detection result directly
+            results[i] = { box, detectedClassId, confidences[idx] };
         }
     }
 

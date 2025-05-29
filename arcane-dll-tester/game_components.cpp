@@ -144,20 +144,92 @@ bool PlayerReady::checkReady() {
         if (!timerStarted) {
             startTime = std::chrono::high_resolution_clock::now();
             timerStarted = true;
+            printf("Timer started! Filling circle...\n");
         }
         else {
             auto now = std::chrono::high_resolution_clock::now();
-            auto duration = std::chrono::duration_cast<std::chrono::seconds>(now - startTime);
-            if (duration.count() >= this->secondsToWait) {
+            auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(now - startTime);
+            double elapsedSeconds = duration.count() / 1000.0;
+            
+            // Draw progress circle
+            drawProgressCircle(elapsedSeconds);
+            
+            if (elapsedSeconds >= this->secondsToWait) {
+                printf("Timer completed! Player ready!\n");
                 return true;
             }
         }
     }
     else {
+        if (timerStarted) {
+            printf("Timer reset! Clearing circle fill...\n");
+        }
         timerStarted = false; // Reset timer
+        
     }
 
     return false;
+}
+
+
+void PlayerReady::drawProgressCircle(double elapsedSeconds) {
+    if (frame.empty()) return;
+    
+    // Calculate progress percentage (0.0 to 1.0)
+    double progress = std::min(1.0, elapsedSeconds / secondsToWait);
+    
+    // Calculate the angle for the arc (0 to 360 degrees)
+    int endAngle = static_cast<int>(progress * 360);
+    
+    // Draw the background circle (gray)
+    cv::circle(frame, center, roiRadius, cv::Scalar(128, 128, 128), 3);
+    
+    // Draw the progress arc (green to red gradient based on progress)
+    if (endAngle > 0) {
+        // Color changes from green to yellow to red as progress increases
+        cv::Scalar progressColor;
+        if (progress < 0.5) {
+            // Green to yellow (0.0 to 0.5)
+            progressColor = cv::Scalar(0, 255, static_cast<int>(255 * progress * 2));
+        } else {
+            // Yellow to red (0.5 to 1.0)
+            progressColor = cv::Scalar(0, static_cast<int>(255 * (1.0 - progress) * 2), 255);
+        }
+        
+        // Draw filled sector (pie slice)
+        std::vector<cv::Point> arcPoints;
+        arcPoints.push_back(center);
+        
+        // Generate points for the arc
+        for (int angle = -90; angle <= endAngle - 90; angle += 2) {
+            double radians = angle * CV_PI / 180.0;
+            int x = center.x + static_cast<int>(roiRadius * cos(radians));
+            int y = center.y + static_cast<int>(roiRadius * sin(radians));
+            arcPoints.push_back(cv::Point(x, y));
+        }
+        
+        // Fill the sector
+        if (arcPoints.size() > 2) {
+            cv::fillPoly(frame, arcPoints, progressColor);
+        }
+        
+        // Draw border circle on top
+        cv::circle(frame, center, roiRadius, cv::Scalar(255, 255, 255), 2);
+    }
+    
+    // Draw percentage text in the center
+    std::string progressText = std::to_string(static_cast<int>(progress * 100)) + "%";
+    int fontFace = cv::FONT_HERSHEY_SIMPLEX;
+    double fontScale = 0.6;
+    int thickness = 2;
+    
+    // Get text size to center it
+    cv::Size textSize = cv::getTextSize(progressText, fontFace, fontScale, thickness, nullptr);
+    cv::Point textPos(center.x - textSize.width / 2, center.y + textSize.height / 2);
+    
+    // Draw text with background for better visibility
+    cv::putText(frame, progressText, textPos, fontFace, fontScale, cv::Scalar(0, 0, 0), thickness + 2);
+    cv::putText(frame, progressText, textPos, fontFace, fontScale, cv::Scalar(255, 255, 255), thickness);
 }
 
 bool PlayerReady::isGreenCovered() {

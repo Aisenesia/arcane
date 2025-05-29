@@ -48,6 +48,8 @@ private:
     bool timerStarted = false;
     std::chrono::high_resolution_clock::time_point startTime;
     
+    void drawProgressCircle(double elapsedSeconds);
+
     // Green color detection range (HSV)
     cv::Scalar lowerGreen = cv::Scalar(35, 100, 100);
     cv::Scalar upperGreen = cv::Scalar(85, 255, 255);
@@ -64,6 +66,7 @@ public:
     std::pair<int, std::vector<int>> detectPlayedCard();
 
 private:
+
     cv::Mat currentFrame;
     std::vector<cv::Rect> playerCardAreas;
     cv::Rect playArea;
