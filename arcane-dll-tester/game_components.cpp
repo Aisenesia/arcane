@@ -63,12 +63,7 @@ bool CalibrationChecker::checkCalibration() {
         
         // Consider circle filled if more than 70% is green
         if (greenRatio < 0.7) {
-            std::cout << "Circle #" << i << " not filled with green. Coverage: " 
-                      << (greenRatio * 100) << "%" << std::endl;
             allCirclesFilled = false;
-        } else {
-            std::cout << "Circle #" << i << " filled with green. Coverage: " 
-                      << (greenRatio * 100) << "%" << std::endl;
         }
     }
 

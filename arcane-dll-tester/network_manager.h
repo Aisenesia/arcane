@@ -18,11 +18,11 @@ public:
     // Detection and classification methods
     static DetectionResultArray detect(const cv::Mat& frame);
     static ClassificationResult classify(const cv::Mat& frame);
-    
-    // Utility methods
+      // Utility methods
     static cv::Mat preprocessImage(const cv::Mat& frame, const cv::Size& targetSize, bool useCuda = false);
     static cv::Mat scaleToFitScreen(const cv::Mat& image);
     static int classConverter(int classId);
+    static std::string detectionClassToName(int classId);
     
     // Getter for CUDA usage status
     static bool isUsingCuda() { return useCudaGlobal; }

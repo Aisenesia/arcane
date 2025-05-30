@@ -90,6 +90,26 @@ int NetworkManager::classConverter(int classId) {
     return (it != class_mapping.end()) ? it->second : -1;
 }
 
+std::string NetworkManager::detectionClassToName(int classId) {
+    std::map<int, std::string> class_names = {
+        {0, "dice"},
+        {1, "second_w"},
+        {2, "nature"},
+        {3, "chain_l"},
+        {4, "frost_b"},
+        {5, "shield_b"},
+        {6, "healing_w"},
+        {7, "lifeblood"},
+        {8, "faris"},
+        {9, "health_b"},
+        {10, "eagle"},
+        {11, "bloodfury"}
+    };
+
+    auto it = class_names.find(classId);
+    return (it != class_names.end()) ? it->second : "unknown";
+}
+
 cv::Mat NetworkManager::preprocessImage(const cv::Mat& frame, const cv::Size& targetSize, bool useCuda) {
     if (useCuda && cv::cuda::getCudaEnabledDeviceCount() > 0) {
         cv::cuda::GpuMat gpuFrame, resizedGpuFrame;
@@ -132,17 +152,6 @@ std::vector<cv::Rect> NetworkManager::processDetections(const cv::Mat& output, c
                                                        std::vector<float>& confidences, std::vector<int>& classIds) {
     std::vector<cv::Rect> boxes;
     
-    // Debug: Print actual output dimensions
-    std::cout << "YOLO Output Debug:" << std::endl;
-    std::cout << "  Dimensions: " << output.dims << std::endl;
-    std::cout << "  Shape: [";
-    for (int i = 0; i < output.dims; i++) {
-        std::cout << output.size[i];
-        if (i < output.dims - 1) std::cout << ", ";
-    }
-    std::cout << "]" << std::endl;
-    std::cout << "  Frame size: " << frame.cols << "x" << frame.rows << std::endl;
-    
     int numDetections = output.size[2]; // Should be 8400
     int numAttributes = output.size[1]; // Should be 16 (4 bbox + 12 classes)
     int validDetections = 0;
@@ -176,12 +185,6 @@ std::vector<cv::Rect> NetworkManager::processDetections(const cv::Mat& output, c
         if (confidence >= 0.5) {
             validDetections++;
             
-            // Debug: Print first few detections
-            if (validDetections <= 3) {
-                std::cout << "  Detection " << validDetections << ": conf=" << confidence 
-                         << ", cx=" << cx << ", cy=" << cy << ", w=" << w << ", h=" << h << std::endl;
-                std::cout << "    Best class: " << bestClassId << " (score=" << bestClassScore << ")" << std::endl;
-            }
               // Convert from 640x640 model coordinates to actual frame coordinates
             // YOLO outputs coordinates relative to 640x640 input size
             float scaleX = static_cast<float>(frame.cols) / 640.0f;
@@ -192,12 +195,7 @@ std::vector<cv::Rect> NetworkManager::processDetections(const cv::Mat& output, c
             int width = static_cast<int>(w * scaleX);
             int height = static_cast<int>(h * scaleY);
             
-            // Debug: Print converted coordinates for first few detections
-            if (validDetections <= 3) {
-                std::cout << "    Pixel coords: x=" << left << ", y=" << top 
-                         << ", w=" << width << ", h=" << height << std::endl;
-            }
-            
+          
             // Ensure bounding box is within frame boundaries
             left = std::max(0, std::min(left, frame.cols - 1));
             top = std::max(0, std::min(top, frame.rows - 1));
@@ -212,9 +210,6 @@ std::vector<cv::Rect> NetworkManager::processDetections(const cv::Mat& output, c
             }
         }
     }
-    
-    std::cout << "  Total valid detections: " << validDetections << std::endl;
-    std::cout << "  Final boxes count: " << boxes.size() << std::endl;
     
     return boxes;
 }
@@ -244,21 +239,17 @@ DetectionResultArray NetworkManager::detect(const cv::Mat& frame) {
     cv::Mat blob;
     cv::dnn::blobFromImage(resizedFrame, blob, 1.0 / 255.0, cv::Size(640, 640), cv::Scalar(), true, false);
     netDetection.setInput(blob);    cv::Mat output = netDetection.forward();
-    std::cout << "Detection Debug - Forward pass completed" << std::endl;
     
     if (output.dims == 3 && output.size[1] >= 5) {
         std::vector<float> confidences;
         std::vector<int> classIds;
         std::vector<cv::Rect> boxes = processDetections(output, frame, confidences, classIds);
-
-        std::cout << "Before NMS: " << boxes.size() << " boxes" << std::endl;
         
         std::vector<int> indices;
         if (!boxes.empty()) {
             cv::dnn::NMSBoxes(boxes, confidences, 0.5, 0.4, indices);
         }
         
-        std::cout << "After NMS: " << indices.size() << " boxes" << std::endl;
         count = std::min(static_cast<int>(indices.size()), MAX_DETECTIONS);
         
         // Simply collect all detections without filtering
