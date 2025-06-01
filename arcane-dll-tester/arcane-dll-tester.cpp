@@ -9,14 +9,14 @@
 #include <filesystem> // For checking file existence
 #include <cstring>    // Add this for strcpy_s
 
-
 #define LOG 1
-
 
 #define USE_NFC 0
 #define SKIP_LOGIN 0
 
 #define NOMINMAX
+
+bool flag = false;
 
 // Network includes (must come before windows.h)
 #include <winsock2.h>
@@ -51,44 +51,44 @@
 #define DEFAULT_SERVER_IP "localhost"
 #define DEFAULT_SERVER_PORT 3001
 
-
 void setupWindow(int frameWidth, int frameHeight);
-void processUnrealCommand(cv::VideoCapture& cap, bool skipLogin = false, bool onlyLogin = false);
-void processModelDebugCommand(cv::VideoCapture& cap);
-bool checkCardsInReadyArea(const cv::Mat& frame);
-bool checkDiceVisible(const cv::Mat& frame);
-std::string receiveFromQRCode(cv::VideoCapture& cap, int userNumber = 0);
+void processUnrealCommand(cv::VideoCapture &cap, bool skipLogin = false, bool onlyLogin = false);
+void processModelDebugCommand(cv::VideoCapture &cap);
+bool checkCardsInReadyArea(const cv::Mat &frame);
+bool checkDiceVisible(const cv::Mat &frame);
+std::string receiveFromQRCode(cv::VideoCapture &cap, int userNumber = 0);
 
 // Function to read server connection details from connection.txt
 std::pair<std::string, int> readConnectionDetails()
 {
     std::ifstream file("connection.txt");
     std::string line;
-    
+
     if (file.is_open() && std::getline(file, line))
     {
         file.close();
-        
+
         // Parse the line format "ip:port"
         size_t colonPos = line.find(':');
         if (colonPos != std::string::npos)
         {
             std::string ip = line.substr(0, colonPos);
             std::string portStr = line.substr(colonPos + 1);
-            
+
             // Trim whitespace
             ip.erase(0, ip.find_first_not_of(" \t\r\n"));
             ip.erase(ip.find_last_not_of(" \t\r\n") + 1);
             portStr.erase(0, portStr.find_first_not_of(" \t\r\n"));
             portStr.erase(portStr.find_last_not_of(" \t\r\n") + 1);
-            
+
             try
             {
                 int port = std::stoi(portStr);
-                if(LOG) std::cout << "connection.txt: " << ip << ":" << port << std::endl;
+                if (LOG)
+                    std::cout << "connection.txt: " << ip << ":" << port << std::endl;
                 return std::make_pair(ip, port);
             }
-            catch (const std::exception& e)
+            catch (const std::exception &e)
             {
                 std::cerr << "Invalid port number in connection.txt: " << portStr << std::endl;
             }
@@ -102,8 +102,9 @@ std::pair<std::string, int> readConnectionDetails()
     {
         std::cerr << "connection.txt not found or cannot be read. Using default connection settings." << std::endl;
     }
-    
-    if(LOG) std::cout << "Using default connection: " << DEFAULT_SERVER_IP << ":" << DEFAULT_SERVER_PORT << std::endl;
+
+    if (LOG)
+        std::cout << "Using default connection: " << DEFAULT_SERVER_IP << ":" << DEFAULT_SERVER_PORT << std::endl;
     return std::make_pair(DEFAULT_SERVER_IP, DEFAULT_SERVER_PORT);
 }
 
@@ -176,7 +177,8 @@ void listCurrentDirectory()
 
         auto writeToConsoleAndFile = [&](const std::string &message)
         {
-            if(LOG) std::cout << message;
+            if (LOG)
+                std::cout << message;
             if (logFile.is_open())
             {
                 logFile << message;
@@ -263,8 +265,10 @@ void cleanupWinsock()
 // Function to connect to ESP8266 with improved error handling
 SOCKET connectToESP8266(const std::string &esp8266_ip, int port)
 {
-    if(LOG) std::cout << "Attempting to connect to ESP8266..." << std::endl;
-    if(LOG) std::cout << "Target: " << esp8266_ip << ":" << port << std::endl;
+    if (LOG)
+        std::cout << "Attempting to connect to ESP8266..." << std::endl;
+    if (LOG)
+        std::cout << "Target: " << esp8266_ip << ":" << port << std::endl;
 
     SOCKET sock = socket(AF_INET, SOCK_STREAM, 0);
     if (sock == INVALID_SOCKET)
@@ -290,7 +294,8 @@ SOCKET connectToESP8266(const std::string &esp8266_ip, int port)
         return INVALID_SOCKET;
     }
 
-    if(LOG) std::cout << "Connecting..." << std::endl;
+    if (LOG)
+        std::cout << "Connecting..." << std::endl;
     if (connect(sock, (sockaddr *)&serverAddr, sizeof(serverAddr)) == SOCKET_ERROR)
     {
         int error = WSAGetLastError();
@@ -323,7 +328,8 @@ SOCKET connectToESP8266(const std::string &esp8266_ip, int port)
         return INVALID_SOCKET;
     }
 
-    if(LOG) std::cout << "✅ Connected to ESP8266 at " << esp8266_ip << ":" << port << std::endl;
+    if (LOG)
+        std::cout << "✅ Connected to ESP8266 at " << esp8266_ip << ":" << port << std::endl;
     return sock;
 }
 
@@ -332,17 +338,21 @@ std::string receiveFromESP8266(SOCKET sock)
 {
     // First, send a request to the ESP8266
     std::string request = "GET_USER_DATA\r\n";
-    if(LOG) std::cout << "Sending request to ESP8266..." << std::endl;
+    if (LOG)
+        std::cout << "Sending request to ESP8266..." << std::endl;
 
     int bytesSent = send(sock, request.c_str(), request.length(), 0);
     if (bytesSent == SOCKET_ERROR)
     {
-        if(LOG) std::cout << "❌ Failed to send request to ESP8266. Error: " << WSAGetLastError() << std::endl;
+        if (LOG)
+            std::cout << "❌ Failed to send request to ESP8266. Error: " << WSAGetLastError() << std::endl;
         return "";
     }
 
-    if(LOG) std::cout << "✅ Request sent (" << bytesSent << " bytes)" << std::endl;
-    if(LOG) std::cout << "Waiting for response from ESP8266..." << std::endl;
+    if (LOG)
+        std::cout << "✅ Request sent (" << bytesSent << " bytes)" << std::endl;
+    if (LOG)
+        std::cout << "Waiting for response from ESP8266..." << std::endl;
 
     // Now wait for response
     char buffer[2048] = {0}; // Increased buffer size
@@ -353,25 +363,30 @@ std::string receiveFromESP8266(SOCKET sock)
         buffer[bytesReceived] = '\0'; // Null-terminate
         std::string receivedData(buffer, bytesReceived);
 
-        if(LOG) std::cout << "✅ Received " << bytesReceived << " bytes from ESP8266" << std::endl;
-        if(LOG) std::cout << "Response: " << receivedData << std::endl;
+        if (LOG)
+            std::cout << "✅ Received " << bytesReceived << " bytes from ESP8266" << std::endl;
+        if (LOG)
+            std::cout << "Response: " << receivedData << std::endl;
 
         return receivedData;
     }
     else if (bytesReceived == 0)
     {
-        if(LOG) std::cout << "⚠️ ESP8266 closed the connection" << std::endl;
+        if (LOG)
+            std::cout << "⚠️ ESP8266 closed the connection" << std::endl;
     }
     else
     {
         int error = WSAGetLastError();
         if (error == WSAETIMEDOUT)
         {
-            if(LOG) std::cout << "⏱️ Receive timeout - ESP8266 not responding" << std::endl;
+            if (LOG)
+                std::cout << "⏱️ Receive timeout - ESP8266 not responding" << std::endl;
         }
         else
         {
-            if(LOG) std::cout << "❌ Receive error: " << error << std::endl;
+            if (LOG)
+                std::cout << "❌ Receive error: " << error << std::endl;
         }
     }
 
@@ -383,12 +398,14 @@ UserData parseUserData(const std::string &data)
 {
     UserData userData;
 
-    if(LOG) std::cout << "Parsing received data: " << data << std::endl;
+    if (LOG)
+        std::cout << "Parsing received data: " << data << std::endl;
 
     // Check if data contains both users (ESP8266 format)
     if (data.find("user1:") != std::string::npos && data.find("user2:") != std::string::npos)
     {
-        if(LOG) std::cout << "Detected ESP8266 dual-user format" << std::endl;
+        if (LOG)
+            std::cout << "Detected ESP8266 dual-user format" << std::endl;
 
         // Parse user1 data
         size_t user1Start = data.find("user1:");
@@ -417,15 +434,19 @@ UserData parseUserData(const std::string &data)
             userData.token = user1Data.substr(tokenStart, tokenEnd - tokenStart);
             userData.characterId = user1Data.substr(charStart, charEnd - charStart);
 
-            if(LOG) std::cout << "Successfully parsed User 1:" << std::endl;
-            if(LOG) std::cout << "  Token: " << userData.token.substr(0, 50) << "..." << std::endl;
-            if(LOG) std::cout << "  Character: " << userData.characterId << std::endl;
+            if (LOG)
+                std::cout << "Successfully parsed User 1:" << std::endl;
+            if (LOG)
+                std::cout << "  Token: " << userData.token.substr(0, 50) << "..." << std::endl;
+            if (LOG)
+                std::cout << "  Character: " << userData.characterId << std::endl;
         }
     }
     // Legacy format support
     else if (data.find("token:") != std::string::npos && data.find("character:") != std::string::npos)
     {
-        if(LOG) std::cout << "Detected legacy single-user format" << std::endl;
+        if (LOG)
+            std::cout << "Detected legacy single-user format" << std::endl;
 
         size_t tokenPos = data.find("token:");
         size_t charPos = data.find("character:");
@@ -455,7 +476,8 @@ UserData parseUserData(const std::string &data)
     }
     else
     {
-        if(LOG) std::cout << "⚠️ Unknown data format received" << std::endl;
+        if (LOG)
+            std::cout << "⚠️ Unknown data format received" << std::endl;
     }
 
     return userData;
@@ -466,7 +488,8 @@ UserData parseUser2Data(const std::string &data)
 {
     UserData userData;
 
-    if(LOG) std::cout << "Parsing User 2 from dual-user data..." << std::endl;
+    if (LOG)
+        std::cout << "Parsing User 2 from dual-user data..." << std::endl;
 
     // Check if data contains both users (ESP8266 format)
     if (data.find("user1:") != std::string::npos && data.find("user2:") != std::string::npos)
@@ -475,7 +498,8 @@ UserData parseUser2Data(const std::string &data)
         size_t user2Start = data.find("|user2:");
         if (user2Start == std::string::npos)
         {
-            if(LOG) std::cout << "❌ User2 data not found" << std::endl;
+            if (LOG)
+                std::cout << "❌ User2 data not found" << std::endl;
             return userData;
         }
 
@@ -500,9 +524,12 @@ UserData parseUser2Data(const std::string &data)
             userData.token = user2Data.substr(tokenStart, tokenEnd - tokenStart);
             userData.characterId = user2Data.substr(charStart, charEnd - charStart);
 
-            if(LOG) std::cout << "Successfully parsed User 2:" << std::endl;
-            if(LOG) std::cout << "  Token: " << userData.token.substr(0, 50) << "..." << std::endl;
-            if(LOG) std::cout << "  Character: " << userData.characterId << std::endl;
+            if (LOG)
+                std::cout << "Successfully parsed User 2:" << std::endl;
+            if (LOG)
+                std::cout << "  Token: " << userData.token.substr(0, 50) << "..." << std::endl;
+            if (LOG)
+                std::cout << "  Character: " << userData.characterId << std::endl;
         }
     }
 
@@ -570,7 +597,8 @@ APIResponse makeAPICall(const std::string &token, const std::string &characterId
             std::wstring endpoint;
             if (isFirstUser)
             {
-                if(LOG) std::cout << "First user detected, creating new session..." << std::endl;
+                if (LOG)
+                    std::cout << "First user detected, creating new session..." << std::endl;
                 endpoint = L"/api/cv/create";
             }
             else
@@ -591,8 +619,10 @@ APIResponse makeAPICall(const std::string &token, const std::string &characterId
                 std::wstring wAuthHeader = std::wstring(authHeader.begin(), authHeader.end());
                 std::wstring contentTypeHeader = L"Content-Type: application/json";
 
-                if(LOG) std::cout << "Sending Authorization header: " << authHeader.substr(0, 50) << "..." << std::endl;
-                if(LOG) std::cout << "Token length: " << token.length() << " characters" << std::endl;
+                if (LOG)
+                    std::cout << "Sending Authorization header: " << authHeader.substr(0, 50) << "..." << std::endl;
+                if (LOG)
+                    std::cout << "Token length: " << token.length() << " characters" << std::endl;
 
                 // Add Authorization header
                 if (!WinHttpAddRequestHeaders(hRequest, wAuthHeader.c_str(), -1, WINHTTP_ADDREQ_FLAG_ADD))
@@ -625,7 +655,8 @@ APIResponse makeAPICall(const std::string &token, const std::string &characterId
                                                 &statusCodeSize,
                                                 WINHTTP_NO_HEADER_INDEX))
                         {
-                            if(LOG) std::cout << "HTTP Status Code: " << statusCode << std::endl;
+                            if (LOG)
+                                std::cout << "HTTP Status Code: " << statusCode << std::endl;
                         }
                         else
                         {
@@ -853,7 +884,8 @@ std::string receiveFromQRCode(cv::VideoCapture &cap, int userNumber)
         int key = cv::waitKey(30) & 0xFF;
         if (key == 27 || key == 'q' || key == 'Q')
         {
-            if(LOG) std::cout << "QR code scanning cancelled by user (key: " << key << ")" << std::endl;
+            if (LOG)
+                std::cout << "QR code scanning cancelled by user (key: " << key << ")" << std::endl;
             exit(0);
         }
     }
@@ -862,21 +894,26 @@ std::string receiveFromQRCode(cv::VideoCapture &cap, int userNumber)
 void processUnrealCommand(cv::VideoCapture &cap, bool skipLogin, bool onlyLogin)
 {
     std::string token;
-    if(LOG) std::cout << "\n"
-              << std::string(60, '=') << std::endl;
+    if (LOG)
+        std::cout << "\n"
+                  << std::string(60, '=') << std::endl;
     if (USE_NFC)
     {
-        if(LOG) std::cout << "           UNREAL COMMAND - ESP8266 MODE" << std::endl;
+        if (LOG)
+            std::cout << "           UNREAL COMMAND - ESP8266 MODE" << std::endl;
     }
     else
     {
-        if(LOG) std::cout << "           UNREAL COMMAND - QR CODE MODE" << std::endl;
+        if (LOG)
+            std::cout << "           UNREAL COMMAND - QR CODE MODE" << std::endl;
     }
-    if(LOG) std::cout << std::string(60, '=') << std::endl;
+    if (LOG)
+        std::cout << std::string(60, '=') << std::endl;
 
     // Display connection details that will be used
     auto connectionDetails = readConnectionDetails();
-    if(LOG) std::cout << "🌐 API Server: " << connectionDetails.first << ":" << connectionDetails.second << std::endl;
+    if (LOG)
+        std::cout << "🌐 API Server: " << connectionDetails.first << ":" << connectionDetails.second << std::endl;
 
     const char *detectionModelPath = "dtc.onnx";
     const char *classificationModelPath = "cls.onnx";
@@ -902,19 +939,24 @@ void processUnrealCommand(cv::VideoCapture &cap, bool skipLogin, bool onlyLogin)
 
             // ESP8266 connection parameters with user input
             std::string esp8266_ip;
-            if(LOG) std::cout << "\nESP8266 Connection Setup:" << std::endl;
-            if(LOG) std::cout << "Please check your ESP8266 serial monitor for the actual IP address." << std::endl;
-            if(LOG) std::cout << "Enter ESP8266 IP address (or press Enter for default " << ESP8266_DEFAULT_IP << "): ";
+            if (LOG)
+                std::cout << "\nESP8266 Connection Setup:" << std::endl;
+            if (LOG)
+                std::cout << "Please check your ESP8266 serial monitor for the actual IP address." << std::endl;
+            if (LOG)
+                std::cout << "Enter ESP8266 IP address (or press Enter for default " << ESP8266_DEFAULT_IP << "): ";
 
             std::getline(std::cin, esp8266_ip);
             if (esp8266_ip.empty())
             {
                 esp8266_ip = ESP8266_DEFAULT_IP;
-                if(LOG) std::cout << "Using default IP: " << esp8266_ip << std::endl;
+                if (LOG)
+                    std::cout << "Using default IP: " << esp8266_ip << std::endl;
             }
 
             int esp8266_port = ESP8266_PORT;
-            if(LOG) std::cout << "Using port: " << esp8266_port << std::endl;
+            if (LOG)
+                std::cout << "Using port: " << esp8266_port << std::endl;
 
             // Connect to ESP8266 with retry logic
             int connectionAttempts = 0;
@@ -923,7 +965,8 @@ void processUnrealCommand(cv::VideoCapture &cap, bool skipLogin, bool onlyLogin)
             while (esp_socket == INVALID_SOCKET && connectionAttempts < maxAttempts)
             {
                 connectionAttempts++;
-                if(LOG) std::cout << "\n--- Connection Attempt " << connectionAttempts << "/" << maxAttempts << " ---" << std::endl;
+                if (LOG)
+                    std::cout << "\n--- Connection Attempt " << connectionAttempts << "/" << maxAttempts << " ---" << std::endl;
 
                 esp_socket = connectToESP8266(esp8266_ip, esp8266_port);
 
@@ -931,7 +974,8 @@ void processUnrealCommand(cv::VideoCapture &cap, bool skipLogin, bool onlyLogin)
                 {
                     if (connectionAttempts < maxAttempts)
                     {
-                        if(LOG) std::cout << "Retrying in 3 seconds..." << std::endl;
+                        if (LOG)
+                            std::cout << "Retrying in 3 seconds..." << std::endl;
                         Sleep(3000);
                     }
                 }
@@ -939,15 +983,18 @@ void processUnrealCommand(cv::VideoCapture &cap, bool skipLogin, bool onlyLogin)
 
             if (esp_socket == INVALID_SOCKET)
             {
-                if(LOG) std::cout << "\nFailed to connect after " << maxAttempts << " attempts." << std::endl;
-                if(LOG) std::cout << "Please check your ESP8266 setup and try again." << std::endl;
+                if (LOG)
+                    std::cout << "\nFailed to connect after " << maxAttempts << " attempts." << std::endl;
+                if (LOG)
+                    std::cout << "Please check your ESP8266 setup and try again." << std::endl;
                 cleanupWinsock();
                 return;
             }
 
-            if(LOG) std::cout << "\nWaiting for user data from ESP8266..." << std::endl;
+            if (LOG)
+                std::cout << "\nWaiting for user data from ESP8266..." << std::endl;
         }
-        
+
         UserData users[2];
         APIResponse apiResponses[2];
 
@@ -959,11 +1006,13 @@ void processUnrealCommand(cv::VideoCapture &cap, bool skipLogin, bool onlyLogin)
 
         if (USE_NFC)
         {
-            if(LOG) std::cout << "Waiting for first user data from ESP8266..." << std::endl;
+            if (LOG)
+                std::cout << "Waiting for first user data from ESP8266..." << std::endl;
         }
         else
         {
-            if(LOG) std::cout << "First user: Please scan your QR code to log in..." << std::endl;
+            if (LOG)
+                std::cout << "First user: Please scan your QR code to log in..." << std::endl;
         }
 
         while (!user1LoggedIn)
@@ -983,8 +1032,10 @@ void processUnrealCommand(cv::VideoCapture &cap, bool skipLogin, bool onlyLogin)
                 // Check if ESP8266 is still waiting for users
                 if (receivedData.find("WAITING:") == 0)
                 {
-                    if(LOG) std::cout << "ESP8266 status: " << receivedData << std::endl;
-                    if(LOG) std::cout << "Waiting for mock data generation..." << std::endl;
+                    if (LOG)
+                        std::cout << "ESP8266 status: " << receivedData << std::endl;
+                    if (LOG)
+                        std::cout << "Waiting for mock data generation..." << std::endl;
                     std::this_thread::sleep_for(std::chrono::seconds(2));
                     continue;
                 }
@@ -996,14 +1047,17 @@ void processUnrealCommand(cv::VideoCapture &cap, bool skipLogin, bool onlyLogin)
                 bool user1Valid = !user1Data.token.empty() && !user1Data.characterId.empty();
                 if (user1Valid)
                 {
-                    if(LOG) std::cout << "\nUSER1:RECV" << std::endl;
-            
+                    if (LOG)
+                        std::cout << "\nUSER1:RECV" << std::endl;
+
                     // Make API call for first user (create session)
                     apiResponses[0] = makeAPICall(user1Data.token, user1Data.characterId, true);
                     if (apiResponses[0].success)
                     {
-                        if(LOG) std::cout << "USER1:OK" << std::endl;
-                        if(LOG) std::cout << "Session ID: " << apiResponses[0].sessionId << std::endl;
+                        if (LOG)
+                            std::cout << "USER1:OK" << std::endl;
+                        if (LOG)
+                            std::cout << "Session ID: " << apiResponses[0].sessionId << std::endl;
 
                         strcpy_s(currentTurnPlayerId, apiResponses[0].currentTurnCharacterId.c_str());
                         globalSessionId = apiResponses[0].sessionId;
@@ -1024,7 +1078,8 @@ void processUnrealCommand(cv::VideoCapture &cap, bool skipLogin, bool onlyLogin)
                 }
                 else
                 {
-                    if(LOG) std::cout << "Invalid user data received. Please scan a valid QR code..." << std::endl;
+                    if (LOG)
+                        std::cout << "Invalid user data received. Please scan a valid QR code..." << std::endl;
                 }
             }
 
@@ -1036,13 +1091,13 @@ void processUnrealCommand(cv::VideoCapture &cap, bool skipLogin, bool onlyLogin)
         }
 
         // Step 2: Second user login (only after first user is logged in)
-       
 
         if (USE_NFC)
         {
-            if(LOG) std::cout << "Waiting for second user data from ESP8266..." << std::endl;
+            if (LOG)
+                std::cout << "Waiting for second user data from ESP8266..." << std::endl;
         }
-       
+
         while (!user2LoggedIn)
         {
             std::string receivedData;
@@ -1073,13 +1128,15 @@ void processUnrealCommand(cv::VideoCapture &cap, bool skipLogin, bool onlyLogin)
 
                 if (user2Valid)
                 {
-                    if(LOG) std::cout << "\nUSER2:RECV" << std::endl;
+                    if (LOG)
+                        std::cout << "\nUSER2:RECV" << std::endl;
 
                     // Make API call for second user (join session)
                     apiResponses[1] = makeAPICall(user2Data.token, user2Data.characterId, false, apiResponses[0].sessionId);
                     if (apiResponses[1].success)
                     {
-                        if(LOG) std::cout << "USER2:OK" << std::endl;
+                        if (LOG)
+                            std::cout << "USER2:OK" << std::endl;
 
                         // User 2 is now officially logged in
                         users[1] = user2Data;
@@ -1097,7 +1154,8 @@ void processUnrealCommand(cv::VideoCapture &cap, bool skipLogin, bool onlyLogin)
                 }
                 else
                 {
-                    if(LOG) std::cout << "Invalid user data received. Please scan a valid QR code..." << std::endl;
+                    if (LOG)
+                        std::cout << "Invalid user data received. Please scan a valid QR code..." << std::endl;
                 }
             }
 
@@ -1105,45 +1163,47 @@ void processUnrealCommand(cv::VideoCapture &cap, bool skipLogin, bool onlyLogin)
             {
                 std::this_thread::sleep_for(std::chrono::milliseconds(500));
             }
-        }        // return; // Exit early for now, as we are not implementing the full game monitoring logic yet
+        } // return; // Exit early for now, as we are not implementing the full game monitoring logic yet
         // give mock data for testing
     }
     // Tested to this point.
-    if(LOG) std::cout << "STATUS:OK" << std::endl;
+    if (LOG)
+        std::cout << "STATUS:OK" << std::endl;
     std::cout << "SID:" << globalSessionId << "," << "TOK:" << token << std::endl;
 
-    if(onlyLogin)
+    if (onlyLogin)
     {
-        if(LOG) std::cout << "Login process completed. Both users successfully logged in." << std::endl;
+        if (LOG)
+            std::cout << "Login process completed. Both users successfully logged in." << std::endl;
         exit(0);
     }
 
     // Get a frame first to determine camera resolution
     cv::Mat testFrame;
     cap >> testFrame;
-    if (testFrame.empty()) {
+    if (testFrame.empty())
+    {
         std::cerr << "Failed to capture frame to determine camera resolution!" << std::endl;
         return;
     }
-    
+
     int frameWidth = testFrame.cols;
     int frameHeight = testFrame.rows;
-    if(LOG) std::cout << "📹 Camera resolution detected: " << frameWidth << "x" << frameHeight << std::endl;
-                                                                                                                                           
+    if (LOG)
+        std::cout << "📹 Camera resolution detected: " << frameWidth << "x" << frameHeight << std::endl;
+
     // Setup calibration for monitoring - now adaptive to frame size
     // Original values were for 1920x1080: {135, 120} and {1783, 938}
     // Scale them relative to the actual frame size
     float scaleX = static_cast<float>(frameWidth) / 1920.0f;
     float scaleY = static_cast<float>(frameHeight) / 1080.0f;
-    
+
     cv::Point centers[] = {
         cv::Point(static_cast<int>(135 * scaleX), static_cast<int>(120 * scaleY)),
-        cv::Point(static_cast<int>(1783 * scaleX), static_cast<int>(938 * scaleY))
-    };
+        cv::Point(static_cast<int>(1783 * scaleX), static_cast<int>(938 * scaleY))};
     int radii[2] = {
         static_cast<int>(72 * std::min(scaleX, scaleY)),
-        static_cast<int>(72 * std::min(scaleX, scaleY))
-    };
+        static_cast<int>(72 * std::min(scaleX, scaleY))};
 
     // Create calibration checker instance
     std::vector<cv::Point> centerVec = {centers[0], centers[1]};
@@ -1166,7 +1226,6 @@ void processUnrealCommand(cv::VideoCapture &cap, bool skipLogin, bool onlyLogin)
         cv::Mat frame;
         cap >> frame;
 
-
         if (frame.empty())
         {
             break;
@@ -1179,12 +1238,12 @@ void processUnrealCommand(cv::VideoCapture &cap, bool skipLogin, bool onlyLogin)
 
         bool calibrationCorrect = calibrationChecker.checkCalibration();
         bool playerReady = playerReadyChecker.checkReady();
-                // Cut the frame centered at the middle: adaptive crop width based on frame size
+        // Cut the frame centered at the middle: adaptive crop width based on frame size
         // For 1920x1080, we used 1000px width (52% of width), maintain this ratio
-        int cropWidth = static_cast<int>(resizedFrame.cols * 0.52f);  // 52% of frame width
-        int cropHeight = resizedFrame.rows;                           // Keep full height
-        int xOffset = (resizedFrame.cols - cropWidth) / 2;            // Center horizontally
-        int yOffset = 0;                                       // No vertical offset, keep full height
+        int cropWidth = static_cast<int>(resizedFrame.cols * 0.52f); // 52% of frame width
+        int cropHeight = resizedFrame.rows;                          // Keep full height
+        int xOffset = (resizedFrame.cols - cropWidth) / 2;           // Center horizontally
+        int yOffset = 0;                                             // No vertical offset, keep full height
         cv::Rect cropRegion(xOffset, yOffset, cropWidth, cropHeight);
         resizedFrame = resizedFrame(cropRegion);
 
@@ -1238,31 +1297,41 @@ void processUnrealCommand(cv::VideoCapture &cap, bool skipLogin, bool onlyLogin)
         cv::putText(frame, calibrationStatus, cv::Point(30, 30), cv::FONT_HERSHEY_SIMPLEX, 0.7,
                     calibrationCorrect ? cv::Scalar(0, 255, 0) : cv::Scalar(0, 0, 255), 2);
         cv::putText(frame, readyStatus, cv::Point(30, 60), cv::FONT_HERSHEY_SIMPLEX, 0.7,
-                    playerReady ? cv::Scalar(0, 255, 0) : cv::Scalar(0, 0, 255), 2);        // Build detection status string with counts
+                    playerReady ? cv::Scalar(0, 255, 0) : cv::Scalar(0, 0, 255), 2); // Build detection status string with counts
         calibrationStatus = calibrationCorrect ? "OK" : "FAIL";
         readyStatus = playerReady ? "READY" : "NOT";
-
         std::stringstream detectionStream;
         detectionStream << calibrationStatus << "," << readyStatus << ",dtc:";
-        
+
         int cardCount = 0;
         int diceCount = 0;
-        
         for (const auto &card : cardDetections)
         {
-            std::string className = NetworkManager::detectionClassToName(card.classId);
-            detectionStream << className << "(" << std::fixed << std::setprecision(2) << card.confidence << "),";
+            // Convert card classId to 2-digit zero-padded format
+            detectionStream << std::setfill('0') << std::setw(2) << card.classId;
             cardCount++;
         }
         for (const auto &dice : diceDetections)
         {
-            detectionStream << "DICE:" << dice.classId << "(" << std::fixed << std::setprecision(2) << dice.confidence << "),";
+            // Convert dice classId to 2-digit zero-padded format
+            detectionStream << "DICE:" << std::setfill('0') << std::setw(2) << dice.classId;
             diceCount++;
         }
-        
+
         std::string detectionStatusString = detectionStream.str();
-        if(calibrationCorrect && playerReady && cardCount == 1 && diceCount == 1)
-            std::cout << detectionStatusString << std::endl;
+        if (playerReady)
+        {
+            if (flag == false && calibrationCorrect && playerReady && cardCount == 1 && diceCount == 1)
+            {
+                flag = true;
+                std::cout<< detectionStatusString << std::endl;
+            }
+        }  
+        else
+        {
+            flag = false;
+        }
+
         // Draw calibration circles
         for (size_t i = 0; i < 2; ++i)
         {
@@ -1293,7 +1362,7 @@ void processUnrealCommand(cv::VideoCapture &cap, bool skipLogin, bool onlyLogin)
         }
 
         // Check if all conditions are met
-        if (calibrationCorrect && playerReady)
+        if (calibrationCorrect && playerReady && cardCount == 1 && diceCount == 1)
         {
             std::string allConditionsMet = "ALL CONDITIONS MET!";
             cv::putText(frame, allConditionsMet, cv::Point(30, 160), cv::FONT_HERSHEY_SIMPLEX, 1,
@@ -1317,9 +1386,7 @@ void processUnrealCommand(cv::VideoCapture &cap, bool skipLogin, bool onlyLogin)
     }
 }
 
-
 // Function declarations
-
 
 int main(int argc, char *argv[])
 {
@@ -1331,7 +1398,8 @@ int main(int argc, char *argv[])
         std::string command = argv[1];
 
         // List the available cameras
-        if(LOG) std::cout << "Available cameras:" << std::endl;
+        if (LOG)
+            std::cout << "Available cameras:" << std::endl;
         for (int i = 0; i < 10; ++i)
         {
             cv::VideoCapture testCap(i);
@@ -1345,11 +1413,13 @@ int main(int argc, char *argv[])
         if (argc == 3)
         {
             cameraIndex = std::stoi(argv[2]);
-            if(LOG) std::cout << "Using camera index: " << cameraIndex << std::endl;
+            if (LOG)
+                std::cout << "Using camera index: " << cameraIndex << std::endl;
         }
         else
         {
-            if(LOG) std::cout << "Using default camera index: 0" << std::endl;
+            if (LOG)
+                std::cout << "Using default camera index: 0" << std::endl;
         }
 
         cv::VideoCapture cap(cameraIndex);
@@ -1360,7 +1430,8 @@ int main(int argc, char *argv[])
         }
 
         // Give camera time to initialize
-        if(LOG) std::cout << "Initializing camera..." << std::endl;
+        if (LOG)
+            std::cout << "Initializing camera..." << std::endl;
         cv::Mat dummy;
         for (int i = 0; i < 10; i++)
         {
@@ -1406,35 +1477,48 @@ int main(int argc, char *argv[])
 // Function to test and debug network models without full game logic
 void processModelDebugCommand(cv::VideoCapture &cap)
 {
-    if(LOG) std::cout << "\n"
-              << std::string(60, '=') << std::endl;
-    if(LOG) std::cout << "           MODEL DEBUG MODE" << std::endl;
-    if(LOG) std::cout << std::string(60, '=') << std::endl;
+    if (LOG)
+        std::cout << "\n"
+                  << std::string(60, '=') << std::endl;
+    if (LOG)
+        std::cout << "           MODEL DEBUG MODE" << std::endl;
+    if (LOG)
+        std::cout << std::string(60, '=') << std::endl;
 
     const char *detectionModelPath = "dtc.onnx";
     const char *classificationModelPath = "cls.onnx";
 
     // Initialize networks
-    if(LOG) std::cout << "🔄 Initializing neural networks..." << std::endl;
+    if (LOG)
+        std::cout << "🔄 Initializing neural networks..." << std::endl;
     if (!NetworkManager::initializeNetworks(detectionModelPath, classificationModelPath, true))
     {
         std::cerr << "❌ Failed to initialize networks. Please check the model files and paths." << std::endl;
         return;
-    }    if(LOG) std::cout << "✅ Networks initialized successfully!" << std::endl;
-    if(LOG) std::cout << "🎯 CUDA enabled: " << (NetworkManager::isUsingCuda() ? "Yes" : "No") << std::endl;
+    }
+    if (LOG)
+        std::cout << "✅ Networks initialized successfully!" << std::endl;
+    if (LOG)
+        std::cout << "🎯 CUDA enabled: " << (NetworkManager::isUsingCuda() ? "Yes" : "No") << std::endl;
 
     // Get frame size for adaptive window setup
     cv::Mat testFrame;
     cap >> testFrame;
-    if (!testFrame.empty()) {
+    if (!testFrame.empty())
+    {
         setupWindow(testFrame.cols, testFrame.rows);
-        if(LOG) std::cout << "📹 Camera resolution: " << testFrame.cols << "x" << testFrame.rows << std::endl;
-    } else {
+        if (LOG)
+            std::cout << "Camera resolution: " << testFrame.cols << "x" << testFrame.rows << std::endl;
+    }
+    else
+    {
         setupWindow(); // Use default if can't read frame
     }
 
-    if(LOG) std::cout << "\n📹 Starting camera feed for model testing..." << std::endl;
-    if(LOG) std::cout << "Press 'q' to quit" << std::endl;
+    if (LOG)
+        std::cout << "\n📹 Starting camera feed for model testing..." << std::endl;
+    if (LOG)
+        std::cout << "Press 'q' to quit" << std::endl;
 
     cv::Mat frame;
     bool running = true;
@@ -1485,6 +1569,7 @@ void processModelDebugCommand(cv::VideoCapture &cap)
         }
     }
 
-    if(LOG) std::cout << "\nModel debug session ended." << std::endl;
+    if (LOG)
+        std::cout << "\nModel debug session ended." << std::endl;
     cv::destroyAllWindows();
 }

@@ -137,7 +137,7 @@ bool PlayerReady::checkReady() {
                     // Yellow to red (0.5 to 1.0)
                     fillColor = cv::Scalar(0, static_cast<int>(255 * (1.0 - progress) * 2), 255);
                 }
-                cv::circle(frame, center, innerRadius, fillColor, cv::FILLED);
+                //cv::circle(frame, center, innerRadius, fillColor, cv::FILLED);
             }
             
             // Display elapsed seconds as text above center (only show if <= 3 seconds)
