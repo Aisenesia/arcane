@@ -2,123 +2,54 @@
 #include "arcane_dll.h"
 #include <algorithm>
 #include <iostream>
+#include <map>
+#include <vector>
 #include <opencv2/dnn.hpp>
 #include <opencv2/opencv.hpp>
-#include <opencv2/cudaimgproc.hpp>
-#include <opencv2/cudawarping.hpp>
-#include <windows.h>
-#include <vector>
 
-
-using namespace cv;
-using namespace cv::dnn;
 using namespace std;
 
-Net netDetection;
-Net netClassification;
+// Global network instances
+cv::dnn::Net netDetection;
+cv::dnn::Net netClassification;
 bool useCudaGlobal = false;
 
-// Define CUDA major and minor versions
-const int REQUIRED_CUDA_MAJOR = 8;
-const int REQUIRED_CUDA_MINOR = 6;
-
-bool checkCudaComputeCapability() {
-    int deviceCount = cuda::getCudaEnabledDeviceCount();
-    if (deviceCount == 0) {
-        cout << "No CUDA-enabled devices found. Falling back to CPU." << endl;
-        return false;
-    }
-
-    for (int i = 0; i < deviceCount; ++i) {
-        cuda::DeviceInfo deviceInfo(i);
-        int major = deviceInfo.majorVersion();
-        int minor = deviceInfo.minorVersion();
-
-        cout << "Device " << i << ": " << deviceInfo.name() << " (Compute Capability: "
-            << major << "." << minor << ")" << endl;
-
-        if (major > REQUIRED_CUDA_MAJOR || (major == REQUIRED_CUDA_MAJOR && minor >= REQUIRED_CUDA_MINOR)) {
-            return true;
-        }
-    }
-
-    cout << "No CUDA device meets the required compute capability ("
-        << REQUIRED_CUDA_MAJOR << "." << REQUIRED_CUDA_MINOR << "). Falling back to CPU." << endl;
-    return false;
-}
-
+// Convert raw classification ID to output class
 int classConverter(int classId) {
-    map<int, int> class_mapping = {
+    static const map<int, int> class_mapping = {
         {0, 1}, {1, 2}, {12, 3}, {13, 4}, {14, 5}, {15, 6},
         {16, 7}, {17, 8}, {18, 9}, {19, 10},
         {2, 11}, {3, 12}, {4, 13}, {5, 14}, {6, 15},
         {7, 16}, {8, 17}, {9, 18}, {10, 19}, {11, 20}
     };
 
-    if (class_mapping.find(classId) != class_mapping.end()) {
-        return class_mapping[classId];
-    }
-    else {
-        return -1;
-    }
+    auto it = class_mapping.find(classId);
+    return (it != class_mapping.end()) ? it->second : -1;
 }
 
-void classifyImage(Net& netClassification, const Mat& image) {
-    Mat blob;
-    blobFromImage(image, blob, 1.0 / 255.0, Size(224, 224), Scalar(), true, false);
-    netClassification.setInput(blob);
-
-    Mat output = netClassification.forward();
-
-    Point classIdPoint;
-    double confidence;
-    minMaxLoc(output, 0, &confidence, 0, &classIdPoint);
-    int classId = classConverter(classIdPoint.x);
-
-    cout << "Classified as: " << classId << " with confidence: " << confidence << endl;
+// Reconstruct cv::Mat wrapping the raw image data pointer
+cv::Mat reconstructMat(const unsigned char* imageData, int width, int height, int channels) {
+    if (imageData == nullptr || width <= 0 || height <= 0 || channels <= 0) {
+        return cv::Mat();
+    }
+    int type = CV_8UC3;
+    if (channels == 1) type = CV_8UC1;
+    else if (channels == 4) type = CV_8UC4;
+    
+    // Create view and clone to ensure deep copy / memory safety
+    return cv::Mat(height, width, type, const_cast<unsigned char*>(imageData)).clone();
 }
 
-Net initializeNetwork(const string& modelPath) {
-    Net net = readNetFromONNX(modelPath);
-
-    if (useCudaGlobal > 0) {
-        net.setPreferableBackend(DNN_BACKEND_CUDA);
-        net.setPreferableTarget(DNN_TARGET_CUDA_FP16);
-    }
-    else {
-        net.setPreferableBackend(DNN_BACKEND_OPENCV);
-        net.setPreferableTarget(DNN_TARGET_CPU);
-    }
-    return net;
-}
-
-Mat preprocessImage(const Mat& frame, const Size& targetSize, bool useCuda) {
-    if (useCuda && cuda::getCudaEnabledDeviceCount() > 0) {
-        cuda::GpuMat gpuFrame, resizedGpuFrame;
-        gpuFrame.upload(frame);
-        cuda::resize(gpuFrame, resizedGpuFrame, targetSize);
-        Mat resizedFrame;
-        resizedGpuFrame.download(resizedFrame);
-        return resizedFrame;
-    }
-    else {
-        Mat resizedFrame;
-        resize(frame, resizedFrame, targetSize);
-        return resizedFrame;
-    }
-}
-
-Mat scaleToFitScreen(const Mat& image) {
-    int screenWidth = GetSystemMetrics(SM_CXSCREEN);
-    int screenHeight = GetSystemMetrics(SM_CYSCREEN);
-    double scaleFactor = min((double)screenWidth / image.cols, (double)screenHeight / image.rows);
-    Mat scaledImage;
-    resize(image, scaledImage, Size(), scaleFactor, scaleFactor);
-    return scaledImage;
+// Preprocess frame by resizing on CPU (avoids slow CPU-GPU memory transfers for resize)
+cv::Mat preprocessImage(const cv::Mat& frame, const cv::Size& targetSize) {
+    if (frame.empty()) return cv::Mat();
+    cv::Mat resizedFrame;
+    cv::resize(frame, resizedFrame, targetSize);
+    return resizedFrame;
 }
 
 // Helper function to adjust bounding box to be square
-Rect adjustToSquare(const Rect& box, int frameWidth, int frameHeight) {
+cv::Rect adjustToSquare(const cv::Rect& box, int frameWidth, int frameHeight) {
     int maxEdge = max(box.width, box.height);
     int centerX = box.x + box.width / 2;
     int centerY = box.y + box.height / 2;
@@ -128,17 +59,19 @@ Rect adjustToSquare(const Rect& box, int frameWidth, int frameHeight) {
     int newRight = min(frameWidth, centerX + maxEdge / 2);
     int newBottom = min(frameHeight, centerY + maxEdge / 2);
 
-    return Rect(newLeft, newTop, newRight - newLeft, newBottom - newTop);
+    return cv::Rect(newLeft, newTop, newRight - newLeft, newBottom - newTop);
 }
 
-// Helper function to process detection output
-vector<Rect> processDetections(const Mat& output, const Mat& frame, vector<float>& confidences) {
-    vector<Rect> boxes;
+// Process network output detections
+vector<cv::Rect> processDetections(const cv::Mat& output, const cv::Mat& frame, vector<float>& confidences) {
+    vector<cv::Rect> boxes;
+    if (output.dims < 3) return boxes;
+    
     int numDetections = output.size[2];
 
     for (int i = 0; i < numDetections; i++) {
         float confidence = output.ptr<float>(0)[4 * numDetections + i];
-        if (confidence > 0.5) {
+        if (confidence > 0.5f) {
             float cx = output.ptr<float>(0)[0 * numDetections + i];
             float cy = output.ptr<float>(0)[1 * numDetections + i];
             float w = output.ptr<float>(0)[2 * numDetections + i];
@@ -155,7 +88,7 @@ vector<Rect> processDetections(const Mat& output, const Mat& frame, vector<float
             height = min(height, frame.rows - top);
 
             if (width > 0 && height > 0) {
-                boxes.push_back(Rect(left, top, width, height));
+                boxes.push_back(cv::Rect(left, top, width, height));
                 confidences.push_back(confidence);
             }
         }
@@ -163,163 +96,194 @@ vector<Rect> processDetections(const Mat& output, const Mat& frame, vector<float
     return boxes;
 }
 
-// Helper function to classify cropped regions
-DetectionResult classifyRegion(const Mat& cropped, const Rect& box, Net& netClassification, int frameWidth, int frameHeight) {
-    Mat blob;
-    blobFromImage(cropped, blob, 1.0 / 255.0, Size(224, 224), Scalar(), true, false);
+// Classify cropped region of interest
+DetectionResult classifyRegion(const cv::Mat& cropped, const cv::Rect& box, cv::dnn::Net& netClassification, int frameWidth, int frameHeight) {
+    cv::Mat blob;
+    cv::dnn::blobFromImage(cropped, blob, 1.0 / 255.0, cv::Size(224, 224), cv::Scalar(), true, false);
     netClassification.setInput(blob);
 
-    Mat output = netClassification.forward();
-    Point classIdPoint;
+    cv::Mat output = netClassification.forward();
+    cv::Point classIdPoint;
     double confidence;
-    minMaxLoc(output, 0, &confidence, 0, &classIdPoint);
+    cv::minMaxLoc(output, 0, &confidence, 0, &classIdPoint);
     int classId = classConverter(classIdPoint.x);
 
-    Rect adjustedBox = (classId == DICE_CLASS) ? adjustToSquare(box, frameWidth, frameHeight) : box;
-    return { adjustedBox, classId, static_cast<float>(confidence) };
+    cv::Rect adjustedBox = (classId == DICE_CLASS) ? adjustToSquare(box, frameWidth, frameHeight) : box;
+    return { adjustedBox.x, adjustedBox.y, adjustedBox.width, adjustedBox.height, classId, static_cast<float>(confidence) };
 }
 
-vector<DetectionResult> runDetection(Net& netDetection, Net& netClassification, const Mat& frame, bool useCuda) {
-    vector<DetectionResult> results;
-    Mat resizedFrame = preprocessImage(frame, Size(640, 640), useCuda);
+// Initialize single network configuration
+cv::dnn::Net initializeNetwork(const string& modelPath, bool useCuda) {
+    cv::dnn::Net net = cv::dnn::readNetFromONNX(modelPath);
 
-    Mat blob;
-    blobFromImage(resizedFrame, blob, 1.0 / 255.0, Size(640, 640), Scalar(), true, false);
-    netDetection.setInput(blob);
-
-    Mat output = netDetection.forward();
-    if (output.dims == 3 && output.size[1] == 5) {
-        vector<float> confidences;
-        vector<Rect> boxes = processDetections(output, frame, confidences);
-
-        vector<int> indices;
-        if (!boxes.empty()) {
-            NMSBoxes(boxes, confidences, 0.5, 0.4, indices);
+    if (useCuda) {
+        try {
+            net.setPreferableBackend(cv::dnn::DNN_BACKEND_CUDA);
+            net.setPreferableTarget(cv::dnn::DNN_TARGET_CUDA_FP16);
         }
-
-        for (size_t i = 0; i < indices.size(); ++i) {
-            int idx = indices[i];
-            Rect box = boxes[idx];
-
-            Mat cropped = frame(box).clone();
-            if (!cropped.empty()) {
-                Mat blob;
-                blobFromImage(cropped, blob, 1.0 / 255.0, Size(224, 224), Scalar(), true, false);
-                netClassification.setInput(blob);
-
-                Mat output = netClassification.forward();
-                Point classIdPoint;
-                double confidence;
-                minMaxLoc(output, 0, &confidence, 0, &classIdPoint);
-                int classId = classConverter(classIdPoint.x);
-
-                // Adjust bounding box if the class is DICE_CLASS
-                Rect adjustedBox = (classId == DICE_CLASS) ? adjustToSquare(box, frame.cols, frame.rows) : box;
-
-                results.push_back({ adjustedBox, classId, static_cast<float>(confidence) });
-            }
+        catch (const cv::Exception& e) {
+            cerr << "Warning: CUDA backend not supported by OpenCV binary. Falling back to CPU. Details: " << e.what() << endl;
+            net.setPreferableBackend(cv::dnn::DNN_BACKEND_OPENCV);
+            net.setPreferableTarget(cv::dnn::DNN_TARGET_CPU);
         }
     }
-    return results;
-}
-
-vector<DetectionResult> detectDice(Net& netDetection, Net& netClassification, const Mat& frame, bool useCuda) {
-    vector<DetectionResult> results;
-    Mat resizedFrame = preprocessImage(frame, Size(640, 640), useCuda);
-
-    Mat blob;
-    blobFromImage(resizedFrame, blob, 1.0 / 255.0, Size(640, 640), Scalar(), true, false);
-    netDetection.setInput(blob);
-
-    Mat output = netDetection.forward();
-    if (output.dims == 3 && output.size[1] == 5) {
-        vector<float> confidences;
-        vector<Rect> boxes = processDetections(output, frame, confidences);
-
-        vector<int> indices;
-        if (!boxes.empty()) {
-            NMSBoxes(boxes, confidences, 0.5, 0.4, indices);
-        }
-
-        for (size_t i = 0; i < indices.size(); ++i) {
-            int idx = indices[i];
-            Rect box = boxes[idx];
-
-            Mat cropped = frame(box).clone();
-            if (!cropped.empty()) {
-                results.push_back(classifyRegion(cropped, box, netClassification, frame.cols, frame.rows));
-            }
-        }
+    else {
+        net.setPreferableBackend(cv::dnn::DNN_BACKEND_OPENCV);
+        net.setPreferableTarget(cv::dnn::DNN_TARGET_CPU);
     }
-    return results;
+    return net;
 }
 
-Mat generateFrame(const Mat& image, const vector<Rect>& boxes, const vector<float>& confidences) {
-    Mat result = image.clone();
-    for (size_t i = 0; i < boxes.size(); ++i) {
-        rectangle(result, boxes[i], Scalar(0, 255, 0), 2);
-        putText(result, to_string(confidences[i]), boxes[i].tl(), FONT_HERSHEY_SIMPLEX, 0.5, Scalar(0, 255, 0), 2);
-    }
-    return result;
-}
+extern "C" {
 
-extern "C" ARCANE_DLL_API bool InitializeNetworks(const char* detectionModelPath, const char* classificationModelPath, bool useCuda) {
-	if (useCuda) useCudaGlobal = checkCudaComputeCapability();
-    netDetection = initializeNetwork(detectionModelPath);
-    netClassification = initializeNetwork(classificationModelPath);
-    return true;
-}
-
-extern "C" ARCANE_DLL_API DetectionResultArray Detect(const cv::Mat& frame) {
-    const int maxDetections = 100; // Maximum number of detections
-    DetectionResult* results = new DetectionResult[maxDetections];
-    int count = 0;
-
-    Mat resizedFrame = preprocessImage(frame, Size(640, 640), useCudaGlobal);
-
-    Mat blob;
-    blobFromImage(resizedFrame, blob, 1.0 / 255.0, Size(640, 640), Scalar(), true, false);
-    netDetection.setInput(blob);
-
-    Mat output = netDetection.forward();
-    if (output.dims == 3 && output.size[1] == 5) {
-        
-        vector<float> confidences;
-
-        vector<Rect> boxes = processDetections(output, frame, confidences);
-        count = static_cast<int>(boxes.size());
-
-        for (int i = 0; i < count; i++) {
-            Mat cropped = frame(boxes[i]).clone();
-            if (!cropped.empty()) {
-                results[i] = classifyRegion(cropped, boxes[i], netClassification, frame.cols, frame.rows);
-            }
-        }
+ARCANE_DLL_API bool InitializeNetworks(const char* detectionModelPath, const char* classificationModelPath, bool useCuda) {
+    if (detectionModelPath == nullptr || classificationModelPath == nullptr) {
+        cerr << "Error: Model paths cannot be null." << endl;
+        return false;
     }
 
+    try {
+        useCudaGlobal = useCuda;
+        netDetection = initializeNetwork(detectionModelPath, useCuda);
+        netClassification = initializeNetwork(classificationModelPath, useCuda);
+        return true;
+    }
+    catch (const cv::Exception& e) {
+        cerr << "OpenCV Exception in InitializeNetworks: " << e.what() << endl;
+        return false;
+    }
+    catch (const std::exception& e) {
+        cerr << "Standard Exception in InitializeNetworks: " << e.what() << endl;
+        return false;
+    }
+    catch (...) {
+        cerr << "Unknown Exception in InitializeNetworks" << endl;
+        return false;
+    }
+}
+
+ARCANE_DLL_API DetectionResultArray Detect(const unsigned char* imageData, int width, int height, int channels) {
     DetectionResultArray resultArray;
-    resultArray.results = results;
-    resultArray.size = count;
+    resultArray.results = nullptr;
+    resultArray.size = 0;
+
+    if (netDetection.empty() || netClassification.empty()) {
+        cerr << "Error: Networks are not initialized." << endl;
+        return resultArray;
+    }
+
+    try {
+        cv::Mat frame = reconstructMat(imageData, width, height, channels);
+        if (frame.empty()) {
+            cerr << "Error: Invalid image data." << endl;
+            return resultArray;
+        }
+
+        cv::Mat resizedFrame = preprocessImage(frame, cv::Size(640, 640));
+        cv::Mat blob;
+        cv::dnn::blobFromImage(resizedFrame, blob, 1.0 / 255.0, cv::Size(640, 640), cv::Scalar(), true, false);
+        netDetection.setInput(blob);
+
+        cv::Mat output = netDetection.forward();
+        if (output.dims == 3 && output.size[1] == 5) {
+            vector<float> confidences;
+            vector<cv::Rect> boxes = processDetections(output, frame, confidences);
+
+            vector<int> indices;
+            if (!boxes.empty()) {
+                cv::dnn::NMSBoxes(boxes, confidences, 0.5f, 0.4f, indices);
+            }
+
+            int finalCount = static_cast<int>(indices.size());
+            if (finalCount > 0) {
+                // Dynamically allocate memory matching exactly the number of detections
+                DetectionResult* results = new DetectionResult[finalCount];
+                int validCount = 0;
+
+                for (int i = 0; i < finalCount; i++) {
+                    int idx = indices[i];
+                    cv::Rect box = boxes[idx];
+
+                    cv::Mat cropped = frame(box).clone();
+                    if (!cropped.empty()) {
+                        results[validCount] = classifyRegion(cropped, box, netClassification, frame.cols, frame.rows);
+                        validCount++;
+                    }
+                }
+
+                resultArray.results = results;
+                resultArray.size = validCount;
+            }
+        }
+    }
+    catch (const cv::Exception& e) {
+        cerr << "OpenCV Exception in Detect: " << e.what() << endl;
+    }
+    catch (const std::exception& e) {
+        cerr << "Standard Exception in Detect: " << e.what() << endl;
+    }
+    catch (...) {
+        cerr << "Unknown Exception in Detect" << endl;
+    }
+
     return resultArray;
 }
 
-extern "C" ARCANE_DLL_API ClassificationResult Classify(const Mat& frame) {
-    Mat blob;
-    blobFromImage(frame, blob, 1.0 / 255.0, Size(224, 224), Scalar(), true, false);
-    netClassification.setInput(blob);
+ARCANE_DLL_API ClassificationResult Classify(const unsigned char* imageData, int width, int height, int channels) {
+    ClassificationResult result = { -1, 0.0f };
 
-    Mat output = netClassification.forward();
-    Point classIdPoint;
-    double confidence;
-    minMaxLoc(output, 0, &confidence, 0, &classIdPoint);
-    int classId = classConverter(classIdPoint.x);
+    if (netClassification.empty()) {
+        cerr << "Error: Classification network is not initialized." << endl;
+        return result;
+    }
 
-    return { classId, static_cast<float>(confidence) };
+    try {
+        cv::Mat frame = reconstructMat(imageData, width, height, channels);
+        if (frame.empty()) {
+            cerr << "Error: Invalid image data." << endl;
+            return result;
+        }
+
+        cv::Mat blob;
+        cv::dnn::blobFromImage(frame, blob, 1.0 / 255.0, cv::Size(224, 224), cv::Scalar(), true, false);
+        netClassification.setInput(blob);
+
+        cv::Mat output = netClassification.forward();
+        cv::Point classIdPoint;
+        double confidence;
+        cv::minMaxLoc(output, 0, &confidence, 0, &classIdPoint);
+        int classId = classConverter(classIdPoint.x);
+
+        result.classId = classId;
+        result.confidence = static_cast<float>(confidence);
+    }
+    catch (const cv::Exception& e) {
+        cerr << "OpenCV Exception in Classify: " << e.what() << endl;
+    }
+    catch (const std::exception& e) {
+        cerr << "Standard Exception in Classify: " << e.what() << endl;
+    }
+    catch (...) {
+        cerr << "Unknown Exception in Classify" << endl;
+    }
+
+    return result;
 }
 
-extern "C" ARCANE_DLL_API void Cleanup() {
-    netDetection = Net(); // Release the detection network
-    netClassification = Net(); // Release the classification network
-	if (useCudaGlobal)
-    cuda::resetDevice(); // Reset the CUDA device to release all resources
+ARCANE_DLL_API void FreeDetectionResults(DetectionResultArray array) {
+    if (array.results != nullptr) {
+        delete[] array.results;
+    }
 }
+
+ARCANE_DLL_API void Cleanup() {
+    try {
+        netDetection = cv::dnn::Net();
+        netClassification = cv::dnn::Net();
+    }
+    catch (...) {
+        // Suppress errors during cleanup
+    }
+}
+
+} // extern "C"
