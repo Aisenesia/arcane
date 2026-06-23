@@ -1,0 +1,19 @@
+# Dependencies
+node_modules
+
+# Logs
+*.log
+npm-debug.log*
+
+# Test coverage
+.nyc_output
+coverage
+
+# Environment & secrets
+.env
+.env.local
+.gitconfig
+
+# OS / editor
+.DS_Store
+Thumbs.db
