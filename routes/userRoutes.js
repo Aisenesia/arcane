@@ -3,6 +3,11 @@ const router = express.Router()
 const userController = require('../controllers/userController')
 const authenticate = require('../middlewares/authenticate')
 const checkAdmin = require('../middlewares/checkAdmin')
+const {
+  emailOnly,
+  passwordReset,
+  handleValidation
+} = require('../middlewares/validate')
 
 // Get all users (Admin only)
 router.get('/', authenticate, checkAdmin, userController.getAllUsers)
@@ -19,18 +24,9 @@ router.put('/:id', authenticate, checkAdmin, userController.updateUser)
 // Delete a user (Admin only)
 router.delete('/:id', authenticate, checkAdmin, userController.deleteUser)
 
-router.post('/register', userController.register)
-
-// router.post('/register/:token', userController.activateAccount)
-
-
-// Forgot password
-router.post('/forgot-password', userController.forgotPassword)
-
-// Reset password
-router.post('/reset-password/:token', userController.resetPassword)
-
-// Verify code
+// Password recovery
+router.post('/forgot-password', emailOnly, handleValidation, userController.forgotPassword)
+router.post('/reset-password/:token', passwordReset, handleValidation, userController.resetPassword)
 router.get('/verify-code/:token', userController.verifyCode)
 
 module.exports = router

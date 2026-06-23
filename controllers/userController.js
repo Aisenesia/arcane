@@ -1,9 +1,6 @@
 const User = require('../models/UserModel')
-const jwt = require('jsonwebtoken')
-const secretKey = process.env.JWT_SECRET
 const emailService = require('../middlewares/emailService')
 const RecoveryToken = require('../models/RecoveryTokenModel')
-const bcrypt = require('bcryptjs')
 
 // Get all users
 exports.getAllUsers = async (req, res) => {
@@ -39,60 +36,6 @@ exports.createUser = async (req, res) => {
     const user = new User(req.body)
     const newUser = await user.save()
     res.status(201).json(newUser)
-  } catch (error) {
-    res.status(400).json({ message: error.message })
-  }
-}
-
-exports.register = async (req, res) => {
-  const { email, password } = req.body
-
-  try {
-    // Check if the username or email already exists
-    const existingUser = await User.findOne({ email })
-    if (existingUser) {
-      return res.status(409).json({ message: 'Email already exists' })
-    }
-
-    // Create a new user as inactive
-    const user = new User({ email, password, isActive: true })
-    await user.save()
-
-    // Generate a verification code
-    const verificationCode = Math.floor(
-      100000 + Math.random() * 900000
-    ).toString()
-    const expirationTime = new Date(Date.now() + 90 * 60 * 1000) // 90 minutes from now
-
-    // Save the recovery token
-    const recoveryToken = new RecoveryToken({
-      userId: user._id,
-      token: verificationCode,
-      expiresAt: expirationTime
-    })
-    await recoveryToken.save()
-
-    // Send the verification code to the user's email
-    await emailService.sendEmail({
-      to: email,
-      subject: 'Account Verification',
-      text: `Your verification code is: ${verificationCode}. It will expire in 90 minutes.`
-    })
-
-    res
-      .status(201)
-      .json({
-        message: 'User registered successfully. Please verify your email.'
-      })
-
-    // Schedule account deletion if not activated
-    setTimeout(async () => {
-      const tokenExists = await RecoveryToken.findOne({ userId: user._id })
-      if (tokenExists) {
-        await User.findByIdAndDelete(user._id)
-        await RecoveryToken.deleteOne({ userId: user._id })
-      }
-    }, 15 * 60 * 1000) // 15 minutes
   } catch (error) {
     res.status(400).json({ message: error.message })
   }

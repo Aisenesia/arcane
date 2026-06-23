@@ -10,7 +10,7 @@ router.post('/room/:roomCode/add-spectator', authenticate, gameController.addSpe
 router.delete('/:sessionId/remove-spectator', authenticate, gameController.removeSpectator);
 
 // Get session details
-router.get('/:sessionId', gameController.getSession); // Temporarily removed 'authenticate' middleware
+router.get('/:sessionId', authenticate, gameController.getSession);
 
 module.exports = router;
 

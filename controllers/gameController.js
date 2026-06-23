@@ -6,7 +6,6 @@ const CharacterState = require('../models/CharacterState')
 // Create a new game session
 exports.createSession = async (req, res) => {
   try {
-    console.log('createSession - Request Body:', JSON.stringify(req.body, null, 2))
     const { gameStatus, characterState, characterId } = req.body
     const userId = req.user.id // Extract userId from token
 
@@ -14,7 +13,7 @@ exports.createSession = async (req, res) => {
     const characterStateData = new CharacterState(characterState)
     await characterStateData.save() // Save the character state to the database
 
-    currentTurnCharacterStateId = characterStateData._id // Use the saved character state ID
+    const currentTurnCharacterStateId = characterStateData._id // Use the saved character state ID
 
     // Fetch character details
     const character = await Character.findById(characterId)
@@ -44,7 +43,6 @@ exports.createSession = async (req, res) => {
 
 exports.cvCreateSession = async (req, res) => {
   try {
-    console.log('cvCreateSession - Request Body:', JSON.stringify(req.body, null, 2))
     const { characterId } = req.body
     const userId = req.user.id // Extract userId from token
 
@@ -94,7 +92,6 @@ exports.cvCreateSession = async (req, res) => {
 
 exports.joinSession = async (req, res) => {
   try {
-    console.log('joinSession - Request Body:', JSON.stringify(req.body, null, 2))
     const { sessionId } = req.params
     const { characterId } = req.body
     const userId = req.user.id // Extract userId from token
@@ -145,7 +142,6 @@ exports.joinSession = async (req, res) => {
 
 exports.getSession = async (req, res) => {
   try {
-    console.log('getSession - Request Params:', JSON.stringify(req.params, null, 2))
     const { sessionId } = req.params
     const game = await Game.findById(sessionId).populate('users.characterState')
     if (!game) return res.status(404).json({ message: 'Session not found' })
@@ -181,7 +177,6 @@ exports.getSession = async (req, res) => {
 
 exports.getSessionUnreal = async (req, res) => {
   try {
-    console.log('getSessionUnreal - Request Params:', JSON.stringify(req.params, null, 2))
     const { sessionId } = req.params
     const game = await Game.findById(sessionId)
       .populate('users.characterState')
@@ -227,7 +222,6 @@ exports.getSessionUnreal = async (req, res) => {
 // End a game session
 exports.endSession = async (req, res) => {
   try {
-    console.log('endSession - Request Params:', JSON.stringify(req.params, null, 2))
     const { sessionId } = req.params
     const game = await Game.findById(sessionId)
     if (!game) return res.status(404).json({ message: 'Session not found' })
@@ -246,7 +240,6 @@ exports.endSession = async (req, res) => {
 
 exports.deleteSession = async (req, res) => {
   try {
-    console.log('deleteSession - Request Params:', JSON.stringify(req.params, null, 2))
     const { sessionId } = req.params
     // find the session by id, if token acquirer is one of the players or the token acquirer is the admin, delete the session
     const game = await Game.findById(sessionId)
@@ -277,12 +270,11 @@ exports.deleteSession = async (req, res) => {
 // Add a player to a session
 exports.addPlayer = async (req, res) => {
   try {
-    console.log('addPlayer - Request Body:', JSON.stringify(req.body, null, 2))
     const { sessionId } = req.params
     const { characterState, characterId } = req.body
     const userId = req.user.id // Extract userId from token
 
-    characterStateData = new CharacterState(characterState)
+    const characterStateData = new CharacterState(characterState)
     await characterStateData.save() // Save the character state to the database
 
     const game = await Game.findById(sessionId).populate('users.characterState')
@@ -324,7 +316,6 @@ exports.addPlayer = async (req, res) => {
 
 exports.removePlayer = async (req, res) => {
   try {
-    console.log('removePlayer - Request Params:', JSON.stringify(req.params, null, 2))
     const { sessionId } = req.params
     const userId = req.user.id // Extract userId from token
 
@@ -342,7 +333,6 @@ exports.removePlayer = async (req, res) => {
 // Add a spectator to a session by roomCode
 exports.addSpectator = async (req, res) => {
   try {
-    console.log('addSpectator - Request Params:', JSON.stringify(req.params, null, 2))
     const { roomCode } = req.params
     const userId = req.user.id // Extract userId from token
 
@@ -366,7 +356,6 @@ exports.addSpectator = async (req, res) => {
 // Remove a spectator from a session
 exports.removeSpectator = async (req, res) => {
   try {
-    console.log('removeSpectator - Request Params:', JSON.stringify(req.params, null, 2))
     const { sessionId } = req.params
     const userId = req.user.id // Extract userId from token
 
@@ -384,7 +373,6 @@ exports.removeSpectator = async (req, res) => {
 // Update a player's character state
 exports.updateCharacterState = async (req, res) => {
   try {
-    console.log('updateCharacterState - Request Body:', JSON.stringify(req.body, null, 2))
     const { sessionId } = req.params
     const { characterState } = req.body
     const userId = req.user.id // Extract userId from token
@@ -408,8 +396,6 @@ exports.updateCharacterState = async (req, res) => {
 
 exports.updateCharacterStates = async (req, res) => {
   try {
-    console.log('updateCharacterStates - Request Body:', JSON.stringify(req.body, null, 2))
-    console.log('SEFA ISTEK ATTI')
     const { sessionId } = req.params
     const { currentTurnCharacterId, characterStates } = req.body // Expecting currentTurnCharacterId and array/object of character states
     const userId = req.user.id // Extract userId from token

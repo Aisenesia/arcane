@@ -1,22 +1,19 @@
-# npm
+# Dependencies
 node_modules
-package-lock.json
-npm-shrinkwrap.json
-*.log
-*.gz
 
-# Coveralls
+# Logs
+*.log
+npm-debug.log*
+
+# Test coverage
 .nyc_output
 coverage
 
-# Benchmarking
-benchmarks/graphs
-
-
-# Server storage
-projects
-backend
+# Environment & secrets
 .env
+.env.local
+.gitconfig
 
-# ignore additional files using core.excludesFile
-# https://git-scm.com/docs/gitignore
+# OS / editor
+.DS_Store
+Thumbs.db

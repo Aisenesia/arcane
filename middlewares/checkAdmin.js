@@ -1,15 +1,9 @@
-const User = require('../models/UserModel')
-
-const checkAdmin = async (req, res, next) => {
-  try {
-    const user = await User.findById(req.userId)
-    if (!user || !user.isAdmin) {
-      return res.status(403).json({ message: 'Access denied. Admins only.' })
-    }
-    next()
-  } catch (error) {
-    res.status(500).json({ message: 'Server error' })
+const checkAdmin = (req, res, next) => {
+  // `authenticate` runs first and attaches the full user document to req.user.
+  if (!req.user || !req.user.isAdmin) {
+    return res.status(403).json({ message: 'Access denied. Admins only.' })
   }
+  next()
 }
 
 module.exports = checkAdmin
